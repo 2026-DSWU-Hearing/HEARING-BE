@@ -28,7 +28,7 @@ async def handle_detection(
     payload: DetectionCreate,
     source: str,
 ) -> Notification | None:
-    from app.services import location_service, push_service
+    from app.services import push_service
     from app.websocket import detection_handler
 
     active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
@@ -43,9 +43,7 @@ async def handle_detection(
         )
         return None
 
-    location = None
-    if payload.latitude is not None and payload.longitude is not None:
-        location = await location_service.reverse_geocode(payload.latitude, payload.longitude)
+    location = None  # 역지오코딩(location_service) 보류 — payload 좌표는 아직 사용 안 함
 
     notification = Notification(
         user_id=user_id,

@@ -1,9 +1,8 @@
 from fastapi import FastAPI
 
-from app.core.config import settings
 from app.core.handlers import register_exception_handlers
 from app.core.middleware import setup_middleware
-from app.api import auth, users, modes, sounds, devices, notifications, conversations, quick_replies, websocket
+from app.api import auth, users, modes, sounds, devices, notifications, websocket
 
 
 def create_app() -> FastAPI:
@@ -18,8 +17,6 @@ def create_app() -> FastAPI:
     app.include_router(sounds.router, prefix="/sounds", tags=["sounds"])
     app.include_router(devices.router, prefix="/devices", tags=["devices"])
     app.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
-    app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
-    app.include_router(quick_replies.router, prefix="/quick-replies", tags=["quick-replies"])
     app.include_router(websocket.router, tags=["websocket"])
 
     @app.get("/health")
