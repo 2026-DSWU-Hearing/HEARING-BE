@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     DEV_AUTH_BYPASS: bool = False
     DEV_USER_ID: int = 1
 
-    CORS_ORIGINS: list[str] = ["*"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:4173"]
 
 
 settings = Settings()
