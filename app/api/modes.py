@@ -2,25 +2,83 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dependencies import get_current_user_id, get_db
-from app.schemas.mode import ModeCreate, ModeResponse, ModeSoundsUpdate, ModeUpdate
+from app.models.mode import Mode
+from app.schemas.mode import (
+    ModeActivateResponse,
+    ModeCreate,
+    ModeCreateRequest,
+    ModeDetailResponse,
+    ModeDetailSoundItem,
+    ModeListItem,
+    ModeListResponse,
+    ModeSoundItem,
+    ModeSoundsResponse,
+    ModeSoundsUpdate,
+    ModeSoundsUpdateRequest,
+    ModeUpdateRequest,
+    ModeWriteResponse,
+)
 from app.services import mode_service
 
 router = APIRouter()
 
 
-@router.get("", response_model=list[ModeResponse])
+def _write_response(mode: Mode) -> ModeWriteResponse:
+    return ModeWriteResponse(
+        mode_id=mode.id,
+        name=mode.name,
+        icon=mode.icon,
+        sounds=[ModeSoundItem(sound_id=s.id, name=s.name) for s in mode.sounds],
+    )
+
+
+@router.get("", response_model=ModeListResponse)
 async def list_modes(user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await mode_service.list_modes(db, user_id)
+    modes = await mode_service.list_modes(db, user_id)
+    return ModeListResponse(
+        modes=[
+            ModeListItem(mode_id=m.id, name=m.name, icon=m.icon, is_active=m.is_active)
+            for m in modes
+        ]
+    )
 
 
-@router.post("", response_model=ModeResponse)
-async def create_mode(payload: ModeCreate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await mode_service.create_mode(db, user_id, payload)
+@router.get("/{mode_id}", response_model=ModeDetailResponse)
+async def get_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    mode = await mode_service.get_mode(db, user_id, mode_id)
+    return ModeDetailResponse(
+        mode_id=mode.id,
+        name=mode.name,
+        icon=mode.icon,
+        is_active=mode.is_active,
+        sounds=[
+            ModeDetailSoundItem(sound_id=s.id, name=s.name, category=s.category.name)
+            for s in mode.sounds
+        ],
+    )
 
 
-@router.patch("/{mode_id}", response_model=ModeResponse)
-async def update_mode(mode_id: int, payload: ModeUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await mode_service.update_mode(db, user_id, mode_id, payload)
+@router.post("", response_model=ModeWriteResponse)
+async def create_mode(payload: ModeCreateRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    mode = await mode_service.create_mode(
+        db,
+        user_id,
+        ModeCreate(name=payload.name, icon=payload.icon, sound_ids=[s.sound_id for s in payload.sounds]),
+    )
+    return _write_response(mode)
+
+
+@router.put("/{mode_id}", response_model=ModeWriteResponse)
+async def update_mode(mode_id: int, payload: ModeUpdateRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    mode = await mode_service.update_mode(
+        db,
+        user_id,
+        mode_id,
+        name=payload.name,
+        icon=payload.icon,
+        sound_ids=[s.sound_id for s in payload.sounds],
+    )
+    return _write_response(mode)
 
 
 @router.delete("/{mode_id}")
@@ -29,11 +87,27 @@ async def delete_mode(mode_id: int, user_id: int = Depends(get_current_user_id),
     return {"ok": True}
 
 
-@router.post("/{mode_id}/activate", response_model=ModeResponse)
+@router.patch("/{mode_id}/activate", response_model=ModeActivateResponse)
 async def activate_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await mode_service.activate_mode(db, user_id, mode_id)
+    mode = await mode_service.activate_mode(db, user_id, mode_id)
+    return ModeActivateResponse(mode_id=mode.id, is_active=mode.is_active)
 
 
-@router.put("/{mode_id}/sounds", response_model=ModeResponse)
-async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await mode_service.update_mode_sounds(db, user_id, mode_id, payload)
+@router.put("/{mode_id}/sounds", response_model=ModeSoundsResponse)
+async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdateRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    mode = await mode_service.update_mode_sounds(
+        db,
+        user_id,
+        mode_id,
+        ModeSoundsUpdate(sound_ids=[s.sound_id for s in payload.sounds]),
+    )
+    return ModeSoundsResponse(
+        mode_id=mode.id,
+        sounds=[ModeSoundItem(sound_id=s.id, name=s.name) for s in mode.sounds],
+    )
+
+
+@router.delete("/{mode_id}/sounds/{sound_id}")
+async def remove_mode_sound(mode_id: int, sound_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    await mode_service.remove_mode_sound(db, user_id, mode_id, sound_id)
+    return {"ok": True}

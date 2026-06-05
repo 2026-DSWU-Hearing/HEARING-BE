@@ -24,7 +24,7 @@ class Mode(Base, TimestampMixin):
 
     @property
     def sounds(self) -> list["Sound"]:
-        """ModeResponse.sounds 직렬화용 — 연결행(ModeSound)이 아니라 실제 Sound 목록을 반환."""
+        """응답 직렬화용 — 연결행(ModeSound)이 아니라 실제 Sound 목록을 반환."""
         return [link.sound for link in self.sound_links]
 
 

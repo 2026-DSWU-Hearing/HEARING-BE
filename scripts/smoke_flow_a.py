@@ -80,12 +80,20 @@ async def main() -> None:
             device_id = r.json()["id"]
             log.append(("POST /devices id", device_id))
 
-            r = await c.post("/modes", headers=auth(), json={"name": "외출", "icon": "walk", "sound_ids": [1, 3]})
-            assert r.status_code == 200, r.text  # <-- ModeResponse 직렬화 버그면 여기서 500
-            mode_id = r.json()["id"]
-            log.append(("POST /modes sounds", [s["name"] for s in r.json()["sounds"]]))
+            r = await c.post(
+                "/api/v1/modes",
+                headers=auth(),
+                json={
+                    "name": "외출",
+                    "icon": "walk",
+                    "sounds": [{"sound_id": 1, "name": "화재경보기"}, {"sound_id": 3, "name": "사이렌"}],
+                },
+            )
+            assert r.status_code == 200, r.text  # <-- ModeWriteResponse 직렬화 버그면 여기서 500
+            mode_id = r.json()["mode_id"]
+            log.append(("POST /api/v1/modes sounds", [s["name"] for s in r.json()["sounds"]]))
 
-            r = await c.post(f"/modes/{mode_id}/activate", headers=auth())
+            r = await c.patch(f"/api/v1/modes/{mode_id}/activate", headers=auth())
             assert r.status_code == 200 and r.json()["is_active"] is True, r.text
 
             base_det = {

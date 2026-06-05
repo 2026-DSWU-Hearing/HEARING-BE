@@ -1,6 +1,4 @@
-from pydantic import BaseModel, ConfigDict
-
-from app.schemas.sound import SoundResponse
+from pydantic import BaseModel
 
 
 class ModeCreate(BaseModel):
@@ -9,20 +7,79 @@ class ModeCreate(BaseModel):
     sound_ids: list[int]
 
 
-class ModeUpdate(BaseModel):
-    name: str | None = None
-    icon: str | None = None
+class ModeSoundsUpdate(BaseModel):
+    sound_ids: list[int]
 
 
-class ModeResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+# --- 프론트(home) 읽기 응답 계약: snake_case + 래핑 ---
 
-    id: int
+
+class ModeListItem(BaseModel):
+    mode_id: int
     name: str
     icon: str
     is_active: bool
-    sounds: list[SoundResponse] = []
 
 
-class ModeSoundsUpdate(BaseModel):
-    sound_ids: list[int]
+class ModeListResponse(BaseModel):
+    modes: list[ModeListItem]
+
+
+class ModeDetailSoundItem(BaseModel):
+    sound_id: int
+    name: str
+    category: str  # 카테고리명(문자열) — 프론트 상세 화면 계약
+
+
+class ModeDetailResponse(BaseModel):
+    mode_id: int
+    name: str
+    icon: str
+    is_active: bool
+    sounds: list[ModeDetailSoundItem]
+
+
+# --- 프론트(home) 쓰기 요청/응답 계약 ---
+
+
+class ModeSoundInput(BaseModel):
+    sound_id: int
+    name: str | None = None  # 프론트가 보내지만 서버는 sound_id만 사용
+
+
+class ModeSoundItem(BaseModel):
+    sound_id: int
+    name: str
+
+
+class ModeCreateRequest(BaseModel):
+    name: str
+    icon: str
+    sounds: list[ModeSoundInput]
+
+
+class ModeUpdateRequest(BaseModel):
+    name: str
+    icon: str
+    sounds: list[ModeSoundInput]
+
+
+class ModeSoundsUpdateRequest(BaseModel):
+    sounds: list[ModeSoundInput]
+
+
+class ModeWriteResponse(BaseModel):
+    mode_id: int
+    name: str
+    icon: str
+    sounds: list[ModeSoundItem]
+
+
+class ModeActivateResponse(BaseModel):
+    mode_id: int
+    is_active: bool
+
+
+class ModeSoundsResponse(BaseModel):
+    mode_id: int
+    sounds: list[ModeSoundItem]
