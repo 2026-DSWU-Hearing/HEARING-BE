@@ -94,3 +94,17 @@ class ModeSoundActiveResponse(BaseModel):
     mode_id: int
     sound_id: int
     is_active: bool
+
+
+# --- 모드 아이콘 카탈로그(참조) 응답 계약 ---
+
+
+class ModeIconItem(BaseModel):
+    mode_id: int
+    name_ko: str
+    name_key: str
+    icon_key: str
+
+
+class ModeIconListResponse(BaseModel):
+    icons: list[ModeIconItem]

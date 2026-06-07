@@ -18,7 +18,10 @@ router = APIRouter()
 async def list_categories(_: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     categories = await sound_service.list_categories(db)
     return CategoryListResponse(
-        categories=[CategoryItem(category_id=c.id, name=c.name) for c in categories]
+        categories=[
+            CategoryItem(category_id=c.id, name=c.name, category_name=c.name_key)
+            for c in categories
+        ]
     )
 
 
@@ -39,6 +42,7 @@ async def list_sounds(
                 name=s.name,
                 category_id=s.category_id,
                 category_name=s.category.name,
+                icon_key=s.icon,
             )
             for s in sounds
         ]

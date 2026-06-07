@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.mode_icons import MODE_ICONS
 from app.db.dependencies import get_current_user_id, get_db
 from app.models.mode import Mode
 from app.schemas.mode import (
@@ -9,6 +10,8 @@ from app.schemas.mode import (
     ModeCreateRequest,
     ModeDetailResponse,
     ModeDetailSoundItem,
+    ModeIconItem,
+    ModeIconListResponse,
     ModeListItem,
     ModeListResponse,
     ModeSoundActiveResponse,
@@ -41,6 +44,21 @@ async def list_modes(user_id: int = Depends(get_current_user_id), db: AsyncSessi
         modes=[
             ModeListItem(mode_id=m.id, name=m.name, icon=m.icon, is_active=m.is_active)
             for m in modes
+        ]
+    )
+
+
+@router.get("/icons", response_model=ModeIconListResponse)
+async def list_mode_icons(_: int = Depends(get_current_user_id)):
+    return ModeIconListResponse(
+        icons=[
+            ModeIconItem(
+                mode_id=i.mode_id,
+                name_ko=i.name_ko,
+                name_key=i.name_key,
+                icon_key=i.icon_key,
+            )
+            for i in MODE_ICONS
         ]
     )
 

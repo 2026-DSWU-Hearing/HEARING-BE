@@ -9,6 +9,7 @@ class SoundCategory(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 class Sound(Base, TimestampMixin):
@@ -18,6 +19,6 @@ class Sound(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("sound_categories.id"), nullable=False)
     risk_level: Mapped[str] = mapped_column(String(10), default="LOW", nullable=False)
-    icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     category: Mapped[SoundCategory] = relationship(lazy="joined")

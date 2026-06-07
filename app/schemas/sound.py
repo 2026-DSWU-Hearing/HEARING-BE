@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SoundCategoryResponse(BaseModel):
@@ -6,6 +6,7 @@ class SoundCategoryResponse(BaseModel):
 
     id: int
     name: str
+    name_key: str | None = None
 
 
 class SoundResponse(BaseModel):
@@ -14,7 +15,7 @@ class SoundResponse(BaseModel):
     id: int
     name: str
     risk_level: str
-    icon_url: str | None
+    icon_key: str | None = Field(default=None, validation_alias="icon")
     category: SoundCategoryResponse
 
 
@@ -24,6 +25,7 @@ class SoundResponse(BaseModel):
 class CategoryItem(BaseModel):
     category_id: int
     name: str
+    category_name: str | None = None
 
 
 class CategoryListResponse(BaseModel):
@@ -35,6 +37,7 @@ class SoundItem(BaseModel):
     name: str
     category_id: int
     category_name: str
+    icon_key: str | None = None
 
 
 class SoundListResponse(BaseModel):
