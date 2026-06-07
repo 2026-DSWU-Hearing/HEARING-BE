@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -35,6 +35,10 @@ class ModeSound(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     mode_id: Mapped[int] = mapped_column(ForeignKey("modes.id", ondelete="CASCADE"), nullable=False)
     sound_id: Mapped[int] = mapped_column(ForeignKey("sounds.id", ondelete="CASCADE"), nullable=False)
+    # 모드 안에서 이 소리의 on/off (off=감지/알림 제외). 기본 on.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
     mode: Mapped[Mode] = relationship(back_populates="sound_links")
     sound: Mapped["Sound"] = relationship(lazy="joined")

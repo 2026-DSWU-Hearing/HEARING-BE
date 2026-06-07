@@ -74,7 +74,7 @@ async def _get_active_mode_sound_ids(db: AsyncSession, user_id: int) -> set[int]
     result = await db.execute(
         select(ModeSound.sound_id)
         .join(Mode, Mode.id == ModeSound.mode_id)
-        .where(Mode.user_id == user_id, Mode.is_active.is_(True))
+        .where(Mode.user_id == user_id, Mode.is_active.is_(True), ModeSound.is_active.is_(True))
     )
     rows = list(result.scalars().all())
     if not rows:

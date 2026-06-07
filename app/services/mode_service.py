@@ -97,6 +97,18 @@ async def remove_mode_sound(db: AsyncSession, user_id: int, mode_id: int, sound_
     await db.commit()
 
 
+async def set_mode_sound_active(
+    db: AsyncSession, user_id: int, mode_id: int, sound_id: int, is_active: bool
+) -> None:
+    """모드 안의 소리 1건 on/off 토글(off=감지/알림 제외). 모드에 없는 소리면 404."""
+    mode = await _get_owned_mode(db, user_id, mode_id)
+    link = next((ms for ms in mode.sound_links if ms.sound_id == sound_id), None)
+    if link is None:
+        raise NotFoundException("Sound not in this mode")
+    link.is_active = is_active
+    await db.commit()
+
+
 async def _get_owned_mode(db: AsyncSession, user_id: int, mode_id: int) -> Mode:
     mode = await get_or_404(db, Mode, mode_id)
     if mode.user_id != user_id:

@@ -29,6 +29,7 @@ class ModeDetailSoundItem(BaseModel):
     sound_id: int
     name: str
     category: str  # 카테고리명(문자열) — 프론트 상세 화면 계약
+    is_active: bool  # 모드 안에서 이 소리의 on/off (off=회색·감지 제외). 기본 on
 
 
 class ModeDetailResponse(BaseModel):
@@ -83,3 +84,13 @@ class ModeActivateResponse(BaseModel):
 class ModeSoundsResponse(BaseModel):
     mode_id: int
     sounds: list[ModeSoundItem]
+
+
+class ModeSoundActiveUpdate(BaseModel):
+    is_active: bool
+
+
+class ModeSoundActiveResponse(BaseModel):
+    mode_id: int
+    sound_id: int
+    is_active: bool

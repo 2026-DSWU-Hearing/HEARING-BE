@@ -11,6 +11,8 @@ from app.schemas.mode import (
     ModeDetailSoundItem,
     ModeListItem,
     ModeListResponse,
+    ModeSoundActiveResponse,
+    ModeSoundActiveUpdate,
     ModeSoundItem,
     ModeSoundsResponse,
     ModeSoundsUpdate,
@@ -52,8 +54,13 @@ async def get_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db
         icon=mode.icon,
         is_active=mode.is_active,
         sounds=[
-            ModeDetailSoundItem(sound_id=s.id, name=s.name, category=s.category.name)
-            for s in mode.sounds
+            ModeDetailSoundItem(
+                sound_id=link.sound.id,
+                name=link.sound.name,
+                category=link.sound.category.name,
+                is_active=link.is_active,
+            )
+            for link in mode.sound_links
         ],
     )
 
@@ -111,3 +118,16 @@ async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdateRequest, use
 async def remove_mode_sound(mode_id: int, sound_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     await mode_service.remove_mode_sound(db, user_id, mode_id, sound_id)
     return {"ok": True}
+
+
+@router.patch("/{mode_id}/sounds/{sound_id}", response_model=ModeSoundActiveResponse)
+async def update_mode_sound_active(
+    mode_id: int,
+    sound_id: int,
+    payload: ModeSoundActiveUpdate,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """모드 안의 소리 1건 on/off 토글. body: {"is_active": bool} (off=감지/알림 제외)"""
+    await mode_service.set_mode_sound_active(db, user_id, mode_id, sound_id, payload.is_active)
+    return ModeSoundActiveResponse(mode_id=mode_id, sound_id=sound_id, is_active=payload.is_active)

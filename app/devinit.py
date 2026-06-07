@@ -1,27 +1,31 @@
-"""로컬 개발 부트스트랩: 테이블 생성 + 개발 유저 + 사운드 카탈로그 시드.
+"""로컬 개발 부트스트랩: 마이그레이션(alembic) + 개발 유저 + 사운드 카탈로그 시드.
 
-로그인/마이그레이션을 붙이기 전, 흐름 A(소리감지→모드 필터→알림)를 바로 돌려보기 위한 용도다.
-- 테이블은 alembic 대신 `create_all`로 즉석 생성한다(운영 마이그레이션은 alembic 사용).
+로그인을 붙이기 전, 흐름 A(소리감지→모드 필터→알림)를 바로 돌려보기 위한 용도다.
+- 스키마는 **alembic 마이그레이션**으로 만든다(`alembic upgrade head`). create_all 아님 —
+  alembic 이 스키마 단일 출처이므로 새 DB도 자동으로 베이스라인이 stamp 된다.
 - 시드 소리 목록은 AI팀 분류 확정 전 임시값.
 
-사용:
+사용(백엔드 루트에서 실행):
   docker compose up -d postgres   # 또는 다른 PostgreSQL 기동
   python -m app.devinit
 """
 
 import asyncio
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import select
 
 from app.core.security import create_access_token
-from app.db.base import Base
-from app.db.session import AsyncSessionLocal, engine
+from app.db.session import AsyncSessionLocal
 
-# 모든 모델을 Base.metadata 에 등록 (create_all 대상이 되도록)
+# 모든 모델을 레지스트리에 등록(관계 문자열 해석 + 매퍼 구성용)
 from app.models import device, mode, notification, sound, user  # noqa: F401
 from app.models.sound import Sound, SoundCategory
 from app.models.user import User
 
+BASE_DIR = Path(__file__).resolve().parent.parent  # 백엔드 루트(alembic.ini 위치)
 DEV_USER_ID = 1
 
 # (카테고리, [(소리이름, 위험도)]) — AI팀 분류 확정 전 임시 시드
@@ -30,6 +34,13 @@ SEED_CATALOG: dict[str, list[tuple[str, str]]] = {
     "생활": [("초인종", "MEDIUM"), ("노크", "LOW"), ("전자레인지 알림", "LOW")],
     "사람": [("이름 부르기", "MEDIUM"), ("아기 울음", "HIGH")],
 }
+
+
+def run_migrations() -> None:
+    """`alembic upgrade head`. env.py 가 내부에서 asyncio.run 을 돌리므로 반드시 동기 컨텍스트에서 호출."""
+    cfg = Config(str(BASE_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BASE_DIR / "alembic"))
+    command.upgrade(cfg, "head")
 
 
 async def ensure_dev_user(db) -> None:
@@ -51,17 +62,20 @@ async def seed_sounds(db) -> None:
     await db.commit()
 
 
-async def main() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def seed() -> None:
     async with AsyncSessionLocal() as db:
         await ensure_dev_user(db)
         await seed_sounds(db)
 
+
+def main() -> None:
+    run_migrations()      # 스키마: alembic upgrade head (동기)
+    asyncio.run(seed())   # 데이터 시드 (비동기)
+
     token = create_access_token(DEV_USER_ID, source="user")
-    print("DB 준비 완료. dev user_id =", DEV_USER_ID)
+    print("DB 준비 완료 (alembic upgrade head). dev user_id =", DEV_USER_ID)
     print(f"Authorization: Bearer {token}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
