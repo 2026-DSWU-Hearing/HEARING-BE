@@ -1,5 +1,7 @@
 """FCM 푸시 알림. firebase-admin SDK 사용."""
 
+import asyncio
+
 from app.core.config import settings
 from app.core.logger import logger
 from app.models.notification import Notification
@@ -40,6 +42,7 @@ async def send_detection_push(fcm_token: str, notification: Notification) -> Non
                 "source": notification.source,
             },
         )
-        messaging.send(message)
+        # firebase-admin 의 messaging.send 는 동기(블로킹) 호출 → 스레드로 보내 이벤트 루프 블로킹 방지
+        await asyncio.to_thread(messaging.send, message)
     except Exception as e:
         logger.error("FCM send failed: %s", e)
