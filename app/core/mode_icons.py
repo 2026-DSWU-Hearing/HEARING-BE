@@ -21,7 +21,7 @@ MODE_ICONS: list[ModeIcon] = [
     ModeIcon(10, "교통", "transportation", "ic_transportation"),
     ModeIcon(11, "외출", "goingOut", "ic_goingOut"),
     ModeIcon(12, "수면", "sleep", "ic_sleep"),
-    ModeIcon(13, "회의", "meeting", "ic_meeting"),
+    ModeIcon(13, "가정", "home", "ic_home"),
     ModeIcon(14, "학교", "school", "ic_school"),
     ModeIcon(15, "공부", "study", "ic_study"),
 ]
