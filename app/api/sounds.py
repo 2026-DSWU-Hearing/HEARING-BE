@@ -7,7 +7,6 @@ from app.schemas.sound import (
     CategoryListResponse,
     SoundItem,
     SoundListResponse,
-    SoundResponse,
 )
 from app.services import sound_service
 
@@ -19,7 +18,7 @@ async def list_categories(_: int = Depends(get_current_user_id), db: AsyncSessio
     categories = await sound_service.list_categories(db)
     return CategoryListResponse(
         categories=[
-            CategoryItem(category_id=c.id, name=c.name, category_name=c.name_key)
+            CategoryItem(category_id=c.id, name=c.name)
             for c in categories
         ]
     )
@@ -47,8 +46,3 @@ async def list_sounds(
             for s in sounds
         ]
     )
-
-
-@router.get("/{sound_id}", response_model=SoundResponse)
-async def get_sound(sound_id: int, _: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    return await sound_service.get_sound(db, sound_id)

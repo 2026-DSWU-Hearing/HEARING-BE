@@ -28,19 +28,6 @@ from app.models.user import User
 BASE_DIR = Path(__file__).resolve().parent.parent  # 백엔드 루트(alembic.ini 위치)
 DEV_USER_ID = 1
 
-CATEGORY_KEYS: dict[str, str] = {
-    "긴급": "emergency",
-    "교통": "transportation",
-    "사람": "human",
-    "생활음": "dailyLife",
-    "자연": "nature",
-    "동물": "animal",
-    "주방": "kitchen",
-    "음악": "music",
-    "위험": "emergency",
-    "생활": "dailyLife",
-}
-
 # (카테고리, [(소리이름, 위험도)]) — AI팀 분류 확정 전 임시 시드
 SEED_CATALOG: dict[str, list[tuple[str, str]]] = {
     "긴급": [("화재경보기", "HIGH"), ("자동차 경적", "HIGH"), ("사이렌", "HIGH")],
@@ -67,7 +54,7 @@ async def seed_sounds(db) -> None:
     if await db.scalar(select(Sound.id).limit(1)):
         return
     for category_name, sounds in SEED_CATALOG.items():
-        category = SoundCategory(name=category_name, name_key=CATEGORY_KEYS.get(category_name))
+        category = SoundCategory(name=category_name)
         db.add(category)
         await db.flush()
         for name, risk in sounds:
@@ -75,23 +62,10 @@ async def seed_sounds(db) -> None:
     await db.commit()
 
 
-async def backfill_category_keys(db) -> None:
-    result = await db.execute(select(SoundCategory))
-    changed = False
-    for category in result.scalars().all():
-        key = CATEGORY_KEYS.get(category.name)
-        if key and category.name_key != key:
-            category.name_key = key
-            changed = True
-    if changed:
-        await db.commit()
-
-
 async def seed() -> None:
     async with AsyncSessionLocal() as db:
         await ensure_dev_user(db)
         await seed_sounds(db)
-        await backfill_category_keys(db)
 
 
 def main() -> None:

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.functions import apply_pagination, get_or_404
+from app.db.functions import apply_pagination
 from app.models.sound import Sound, SoundCategory
 
 
@@ -25,7 +25,3 @@ async def list_sounds(
     q = apply_pagination(q.order_by(Sound.id), page, size)
     result = await db.execute(q)
     return list(result.scalars().all())
-
-
-async def get_sound(db: AsyncSession, sound_id: int) -> Sound:
-    return await get_or_404(db, Sound, sound_id)
