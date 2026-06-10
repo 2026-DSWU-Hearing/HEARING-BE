@@ -4,9 +4,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenException
 from app.core.logger import logger
-from app.db.functions import get_or_404
+from app.db.functions import get_or_404, get_owned_or_403
 from app.models.device import Device
 from app.schemas.device import DetectionCreate, DeviceCreate, DeviceUpdate
 
@@ -72,7 +71,4 @@ async def handle_detection(
 
 
 async def _get_owned_device(db: AsyncSession, user_id: int, device_id: int) -> Device:
-    device = await get_or_404(db, Device, device_id)
-    if device.user_id != user_id:
-        raise ForbiddenException("Not your device")
-    return device
+    return await get_owned_or_403(db, Device, device_id, user_id)

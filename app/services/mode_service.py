@@ -1,8 +1,8 @@
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenException, NotFoundException, ValidationException
-from app.db.functions import get_or_404
+from app.core.exceptions import NotFoundException, ValidationException
+from app.db.functions import get_or_404, get_owned_or_403
 from app.models.mode import Mode, ModeSound
 from app.schemas.mode import ModeCreate, ModeSoundsUpdate
 
@@ -49,10 +49,7 @@ async def update_mode(
     mode = await _get_owned_mode(db, user_id, mode_id)
     mode.name = name
     mode.icon = icon
-    mode.sound_links.clear()
-    await db.flush()  # 기존 링크 DELETE를 먼저 반영 → 동일 sound_id 재추가 시 uq_mode_sound 충돌 방지
-    for sid in sound_ids:
-        mode.sound_links.append(ModeSound(sound_id=sid))
+    await _set_sound_links(db, mode, sound_ids)
     await db.commit()
     return await get_or_404(db, Mode, mode.id)
 
@@ -77,10 +74,7 @@ async def update_mode_sounds(db: AsyncSession, user_id: int, mode_id: int, paylo
     if len(payload.sound_ids) < MIN_SOUNDS_PER_MODE:
         raise ValidationException(f"At least {MIN_SOUNDS_PER_MODE} sound required")
     mode = await _get_owned_mode(db, user_id, mode_id)
-    mode.sound_links.clear()
-    await db.flush()  # 기존 링크 DELETE를 먼저 반영 → 동일 sound_id 재추가 시 uq_mode_sound 충돌 방지
-    for sid in payload.sound_ids:
-        mode.sound_links.append(ModeSound(sound_id=sid))
+    await _set_sound_links(db, mode, payload.sound_ids)
     await db.commit()
     return await get_or_404(db, Mode, mode.id)
 
@@ -110,7 +104,12 @@ async def set_mode_sound_active(
 
 
 async def _get_owned_mode(db: AsyncSession, user_id: int, mode_id: int) -> Mode:
-    mode = await get_or_404(db, Mode, mode_id)
-    if mode.user_id != user_id:
-        raise ForbiddenException("Not your mode")
-    return mode
+    return await get_owned_or_403(db, Mode, mode_id, user_id)
+
+
+async def _set_sound_links(db: AsyncSession, mode: Mode, sound_ids: list[int]) -> None:
+    """모드의 소리 링크를 sound_ids 로 통째 교체."""
+    mode.sound_links.clear()
+    await db.flush()  # 기존 링크 DELETE를 먼저 반영 → 동일 sound_id 재추가 시 uq_mode_sound 충돌 방지
+    for sid in sound_ids:
+        mode.sound_links.append(ModeSound(sound_id=sid))

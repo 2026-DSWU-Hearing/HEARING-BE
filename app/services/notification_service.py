@@ -7,13 +7,11 @@
   4) 매칭되면 → Notification 저장 + FCM push + WS broadcast
 """
 
-from datetime import datetime
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
-from app.db.functions import get_or_404
+from app.db.functions import apply_pagination, get_or_404, get_owned_or_403
 from app.models.device import Device
 from app.models.mode import Mode, ModeSound
 from app.models.notification import Notification
@@ -85,8 +83,6 @@ async def _get_active_mode_sound_ids(db: AsyncSession, user_id: int) -> set[int]
 async def list_notifications(
     db: AsyncSession, user_id: int, page: int = 1, size: int = 30
 ) -> list[Notification]:
-    from app.db.functions import apply_pagination
-
     q = (
         select(Notification)
         .where(Notification.user_id == user_id)
@@ -97,11 +93,7 @@ async def list_notifications(
 
 
 async def mark_read(db: AsyncSession, user_id: int, notification_id: int) -> Notification:
-    from app.core.exceptions import ForbiddenException
-
-    notif = await get_or_404(db, Notification, notification_id)
-    if notif.user_id != user_id:
-        raise ForbiddenException("Not your notification")
+    notif = await get_owned_or_403(db, Notification, notification_id, user_id)
     notif.is_read = True
     await db.commit()
     await db.refresh(notif)
@@ -109,10 +101,6 @@ async def mark_read(db: AsyncSession, user_id: int, notification_id: int) -> Not
 
 
 async def delete_notification(db: AsyncSession, user_id: int, notification_id: int) -> None:
-    from app.core.exceptions import ForbiddenException
-
-    notif = await get_or_404(db, Notification, notification_id)
-    if notif.user_id != user_id:
-        raise ForbiddenException("Not your notification")
+    notif = await get_owned_or_403(db, Notification, notification_id, user_id)
     await db.delete(notif)
     await db.commit()
