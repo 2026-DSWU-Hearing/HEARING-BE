@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dependencies import get_current_user_id, get_db
@@ -28,12 +28,10 @@ async def list_categories(_: int = Depends(get_current_user_id), db: AsyncSessio
 async def list_sounds(
     category_id: int | None = None,
     keyword: str | None = None,
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
     _: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    sounds = await sound_service.list_sounds(db, category_id, keyword, page, size)
+    sounds = await sound_service.list_sounds(db, category_id, keyword)
     return SoundListResponse(
         sounds=[
             SoundItem(
