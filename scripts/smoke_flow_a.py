@@ -5,6 +5,7 @@
 
 핵심 단언:
   - POST /modes 응답의 sounds 가 실제 Sound 목록으로 직렬화된다(ModeResponse 버그 회귀 방지).
+  - AI서버 경로: sound_id 없이 한글 (category, name)만 와도 백엔드가 이름으로 sound_id 를 해석한다.
   - 활성 모드에 포함된 소리만 Notification 으로 저장된다(비매칭은 무시).
 
 실행:
@@ -51,9 +52,9 @@ async def seed() -> None:
         db.add(SoundCategory(id=1, name="위험"))
         await db.flush()
         db.add_all([
-            Sound(id=1, name="화재경보기", category_id=1, risk_level="HIGH"),
-            Sound(id=2, name="초인종", category_id=1, risk_level="MEDIUM"),
-            Sound(id=3, name="사이렌", category_id=1, risk_level="HIGH"),
+            Sound(id=1, name="화재경보기", category_id=1),
+            Sound(id=2, name="초인종", category_id=1),
+            Sound(id=3, name="사이렌", category_id=1),
         ])
         await db.commit()
 
@@ -96,19 +97,19 @@ async def main() -> None:
             r = await c.patch(f"/api/v1/modes/{mode_id}/activate", headers=auth())
             assert r.status_code == 200 and r.json()["is_active"] is True, r.text
 
+            # AI서버 경로 시뮬레이션: sound_id 없이 한글 (category, name)만 보낸다(source=ai-server).
             base_det = {
                 "sound_category": "위험",
-                "risk_level": "HIGH",
                 "confidence": 0.97,
                 "detected_at": datetime.now(timezone.utc).isoformat(),
             }
-            # 매칭: 화재경보기(1) → 활성 모드에 포함 → 알림 저장
-            r = await c.post(f"/devices/{device_id}/detections", headers=auth("device"),
-                             json={**base_det, "sound_id": 1, "sound_name": "화재경보기"})
+            # 매칭: "화재경보기" → 이름으로 sound_id=1 해석 → 활성 모드에 포함 → 알림 저장
+            r = await c.post(f"/devices/{device_id}/detections", headers=auth("ai-server"),
+                             json={**base_det, "sound_name": "화재경보기"})
             assert r.status_code == 200, r.text
-            # 비매칭: 초인종(2) → 활성 모드에 없음 → 무시
-            r = await c.post(f"/devices/{device_id}/detections", headers=auth("device"),
-                             json={**base_det, "sound_id": 2, "sound_name": "초인종", "risk_level": "MEDIUM"})
+            # 비매칭: "초인종" → sound_id=2 해석 → 활성 모드에 없음 → 무시
+            r = await c.post(f"/devices/{device_id}/detections", headers=auth("ai-server"),
+                             json={**base_det, "sound_name": "초인종"})
             assert r.status_code == 200, r.text
 
             r = await c.get("/notifications", headers=auth())

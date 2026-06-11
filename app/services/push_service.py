@@ -33,12 +33,11 @@ async def send_detection_push(fcm_token: str, notification: Notification) -> Non
             token=fcm_token,
             notification=messaging.Notification(
                 title=notification.sound_name,
-                body=f"[{notification.risk_level}] {notification.sound_category}",
+                body=notification.sound_category,
             ),
             data={
                 "notification_id": str(notification.id),
                 "sound_name": notification.sound_name,
-                "risk_level": notification.risk_level,
                 "source": notification.source,
             },
         )
