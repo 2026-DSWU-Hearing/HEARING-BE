@@ -8,7 +8,7 @@
   4) 매칭되면 → Notification 저장 + FCM push + WS broadcast
 """
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import logger
@@ -69,7 +69,18 @@ async def handle_detection(
 
     user = await get_or_404(db, User, user_id)
     if not user.do_not_disturb and user.fcm_token:
-        await push_service.send_detection_push(user.fcm_token, notification)
+        fcm_token = user.fcm_token
+        try:
+            await push_service.send_detection_push(fcm_token, notification)
+        except push_service.UnregisteredFcmTokenError:
+            result = await db.execute(
+                update(User)
+                .where(User.id == user_id, User.fcm_token == fcm_token)
+                .values(fcm_token=None)
+            )
+            await db.commit()
+            if result.rowcount:
+                logger.info("removed unregistered FCM token for user_id=%s", user_id)
 
     await detection_handler.broadcast_detection(user_id, notification)
     return notification

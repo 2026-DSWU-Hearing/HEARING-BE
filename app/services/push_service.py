@@ -9,6 +9,10 @@ from app.models.notification import Notification
 _initialized = False
 
 
+class UnregisteredFcmTokenError(Exception):
+    """Raised when FCM no longer recognizes a registration token."""
+
+
 def _ensure_initialized() -> None:
     global _initialized
     if _initialized:
@@ -26,9 +30,9 @@ def _ensure_initialized() -> None:
 
 async def send_detection_push(fcm_token: str, notification: Notification) -> None:
     _ensure_initialized()
-    try:
-        from firebase_admin import messaging
+    from firebase_admin import messaging
 
+    try:
         # notification payload 를 빼고 data-only 로 보낸다.
         # 웹 PWA background 에서 notification payload 가 있으면 브라우저가 알림을 자동 표시하고
         # 서비스워커 onBackgroundMessage 도 showNotification 으로 1개 더 그려서 알림이 2개 뜬다.
@@ -45,5 +49,8 @@ async def send_detection_push(fcm_token: str, notification: Notification) -> Non
         )
         # firebase-admin 의 messaging.send 는 동기(블로킹) 호출 → 스레드로 보내 이벤트 루프 블로킹 방지
         await asyncio.to_thread(messaging.send, message)
+    except messaging.UnregisteredError as error:
+        logger.warning("FCM token is unregistered")
+        raise UnregisteredFcmTokenError from error
     except Exception as e:
         logger.error("FCM send failed: %s", e)
