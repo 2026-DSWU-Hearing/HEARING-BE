@@ -29,13 +29,15 @@ async def send_detection_push(fcm_token: str, notification: Notification) -> Non
     try:
         from firebase_admin import messaging
 
+        # notification payload 를 빼고 data-only 로 보낸다.
+        # 웹 PWA background 에서 notification payload 가 있으면 브라우저가 알림을 자동 표시하고
+        # 서비스워커 onBackgroundMessage 도 showNotification 으로 1개 더 그려서 알림이 2개 뜬다.
+        # data-only 면 브라우저 자동 표시가 사라져 서비스워커가 그린 알림 1개만 남는다.
         message = messaging.Message(
             token=fcm_token,
-            notification=messaging.Notification(
-                title=notification.sound_name,
-                body=f"[{notification.risk_level}] {notification.sound_category}",
-            ),
             data={
+                "title": notification.sound_name,
+                "body": f"[{notification.risk_level}] {notification.sound_category}",
                 "notification_id": str(notification.id),
                 "sound_name": notification.sound_name,
                 "risk_level": notification.risk_level,
