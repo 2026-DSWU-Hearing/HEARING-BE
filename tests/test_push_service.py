@@ -11,7 +11,6 @@ async def test_send_detection_push_raises_for_unregistered_token(monkeypatch):
     notification = SimpleNamespace(
         id=1,
         sound_name="test sound",
-        risk_level="HIGH",
         sound_category="test category",
         source="ai-server",
     )
@@ -32,7 +31,6 @@ async def test_send_detection_push_swallows_other_fcm_errors(monkeypatch):
     notification = SimpleNamespace(
         id=1,
         sound_name="test sound",
-        risk_level="HIGH",
         sound_category="test category",
         source="ai-server",
     )
