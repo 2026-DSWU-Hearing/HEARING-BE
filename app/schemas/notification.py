@@ -11,7 +11,6 @@ class NotificationResponse(BaseModel):
     sound_id: int | None
     sound_name: str
     sound_category: str
-    risk_level: str
     source: str
     confidence: float | None
     location: str | None

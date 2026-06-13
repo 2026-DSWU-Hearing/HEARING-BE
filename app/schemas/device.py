@@ -31,7 +31,6 @@ class DetectionCreate(BaseModel):
     sound_id: int | None = None
     sound_name: str
     sound_category: str
-    risk_level: str
     confidence: float | None = None
     detected_at: datetime
     latitude: float | None = None

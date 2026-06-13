@@ -27,7 +27,6 @@ async def broadcast_detection(user_id: int, notification: Notification) -> None:
             "id": notification.id,
             "sound_name": notification.sound_name,
             "sound_category": notification.sound_category,
-            "risk_level": notification.risk_level,
             "source": notification.source,
             "confidence": notification.confidence,
             "location": notification.location,

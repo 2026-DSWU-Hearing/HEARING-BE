@@ -18,7 +18,6 @@ class Notification(Base, TimestampMixin):
 
     sound_name: Mapped[str] = mapped_column(String(100), nullable=False)
     sound_category: Mapped[str] = mapped_column(String(50), nullable=False)
-    risk_level: Mapped[str] = mapped_column(String(10), nullable=False)
 
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
