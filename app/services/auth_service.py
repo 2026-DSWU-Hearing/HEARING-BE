@@ -4,19 +4,52 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthException
+from app.core.exceptions import AuthException, ConflictException
 from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     verify_google_id_token,
+    verify_password,
 )
 from app.models.device import Device
 from app.models.mode import Mode, ModeSound
 from app.models.notification import Notification
 from app.models.sound import Sound
 from app.models.user import User
-from app.schemas.auth import GoogleLoginRequest, TokenResponse
+from app.schemas.auth import GoogleLoginRequest, LoginRequest, RegisterRequest, TokenResponse
+
+
+async def register(db: AsyncSession, payload: RegisterRequest) -> User:
+    existing = await db.execute(select(User).where(User.email == payload.email))
+    if existing.scalar_one_or_none():
+        raise ConflictException("Email already registered")
+    user = User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+        nickname=payload.nickname,
+        disability_type=payload.disability_type,
+        terms_agreed=payload.terms_agreed,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def login(db: AsyncSession, payload: LoginRequest) -> TokenResponse:
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
+        raise AuthException("Invalid credentials")
+    return _issue_tokens(user.id)
+
+
+async def is_email_available(db: AsyncSession, email: str) -> bool:
+    """이메일이 아직 가입되지 않았으면 True. (회원가입 이메일 단계 중복확인용)"""
+    result = await db.execute(select(User.id).where(User.email == email))
+    return result.scalar_one_or_none() is None
 
 
 async def google_login(db: AsyncSession, payload: GoogleLoginRequest) -> TokenResponse:
