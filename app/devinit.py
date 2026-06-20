@@ -16,7 +16,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from app.core.security import create_access_token
 from app.db.session import AsyncSessionLocal
@@ -105,11 +105,26 @@ async def seed_sounds(db) -> None:
     await db.commit()
 
 
+async def reset_sequences(db) -> None:
+    """명시적 id(dev user=1, dev device=1)로 시드하면 Postgres 시퀀스가 안 올라가서,
+    이후 자동 id INSERT(게스트·구글 로그인 등 새 유저/디바이스 생성)가 id=1 로 충돌한다.
+    → 시드한 테이블의 시퀀스를 현재 MAX(id) 에 맞춰 다음 INSERT 가 MAX+1 을 쓰게 한다."""
+    for table in ("users", "devices"):
+        await db.execute(
+            text(
+                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                f"(SELECT COALESCE(MAX(id), 1) FROM {table}))"
+            )
+        )
+    await db.commit()
+
+
 async def seed() -> None:
     async with AsyncSessionLocal() as db:
         await ensure_dev_user(db)
         await ensure_dev_device(db)
         await seed_sounds(db)
+        await reset_sequences(db)
 
 
 def main() -> None:
