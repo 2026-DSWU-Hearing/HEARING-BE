@@ -82,7 +82,7 @@ async def main() -> None:
             log.append(("POST /devices id", device_id))
 
             r = await c.post(
-                "/api/v1/modes",
+                "/modes",
                 headers=auth(),
                 json={
                     "name": "외출",
@@ -92,9 +92,9 @@ async def main() -> None:
             )
             assert r.status_code == 200, r.text  # <-- ModeWriteResponse 직렬화 버그면 여기서 500
             mode_id = r.json()["mode_id"]
-            log.append(("POST /api/v1/modes sounds", [s["name"] for s in r.json()["sounds"]]))
+            log.append(("POST /modes sounds", [s["name"] for s in r.json()["sounds"]]))
 
-            r = await c.patch(f"/api/v1/modes/{mode_id}/activate", headers=auth())
+            r = await c.patch(f"/modes/{mode_id}/activate", headers=auth())
             assert r.status_code == 200 and r.json()["is_active"] is True, r.text
 
             # AI서버 경로 시뮬레이션: sound_id 없이 한글 (category, name)만 보낸다(source=ai-server).

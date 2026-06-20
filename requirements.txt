@@ -6,6 +6,7 @@ SQLAlchemy[asyncio]==2.0.35
 asyncpg==0.29.0
 alembic==1.13.3
 firebase-admin==6.5.0
+google-auth==2.53.0  # Google ID 토큰(GIS) 검증 — 그동안 firebase-admin 통해 간접설치되던 것 명시
 httpx==0.27.2
 python-jose[cryptography]==3.3.0
 bcrypt==4.2.0

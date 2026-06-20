@@ -2,34 +2,23 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dependencies import get_db
-from app.schemas.auth import (
-    ForgotPasswordRequest,
-    GoogleLoginRequest,
-    LoginRequest,
-    RefreshRequest,
-    RegisterRequest,
-    ResetPasswordRequest,
-    TokenResponse,
-)
-from app.schemas.user import UserResponse
+from app.schemas.auth import GoogleLoginRequest, RefreshRequest, TokenResponse
 from app.services import auth_service
 
 router = APIRouter()
 
 
-@router.post("/register", response_model=UserResponse)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    return await auth_service.register(db, payload)
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    return await auth_service.login(db, payload)
-
-
+# 로그인은 Google(GIS) + 게스트(데모) 두 가지만 지원.
+# 이메일/비번 register·login·forgot·reset 은 제거됨.
 @router.post("/google", response_model=TokenResponse)
 async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
     return await auth_service.google_login(db, payload)
+
+
+@router.post("/demo", response_model=TokenResponse)
+async def demo_login(db: AsyncSession = Depends(get_db)):
+    """게스트(데모) 로그인 — 포트폴리오 방문자가 계정 없이 둘러보기. 매번 새 샌드박스 유저."""
+    return await auth_service.demo_login(db)
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -39,16 +28,4 @@ async def refresh(payload: RefreshRequest):
 
 @router.post("/logout")
 async def logout():
-    return {"ok": True}
-
-
-@router.post("/forgot-password")
-async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    await auth_service.forgot_password(db, payload.email)
-    return {"ok": True}
-
-
-@router.post("/reset-password")
-async def reset_password(payload: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
-    await auth_service.reset_password(db, payload.token, payload.new_password)
     return {"ok": True}

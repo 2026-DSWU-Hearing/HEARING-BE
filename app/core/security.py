@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -45,5 +46,26 @@ def decode_token(token: str) -> dict[str, Any]:
 
 
 async def verify_google_id_token(id_token: str) -> dict[str, Any]:
-    """Google ID 토큰 검증 → {email, sub, name, picture, ...}"""
-    raise NotImplementedError
+    """Google ID 토큰(GIS) 검증 → {email, sub, name, picture, ...}.
+
+    GOOGLE_CLIENT_ID 가 설정돼 있으면 aud(클라이언트)까지 검증한다(미설정 시 서명·발급자·만료만).
+    검증에 구글 공개키를 받아오는 블로킹 네트워크 호출이 있어 asyncio.to_thread 로 감싼다.
+    """
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    def _verify() -> dict[str, Any]:
+        return google_id_token.verify_oauth2_token(
+            id_token,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID or None,
+        )
+
+    try:
+        info = await asyncio.to_thread(_verify)
+    except ValueError as e:  # 서명·aud·iss·만료 불일치
+        raise AuthException("Invalid Google ID token") from e
+
+    if not info.get("email"):
+        raise AuthException("Google account has no email")
+    return info
