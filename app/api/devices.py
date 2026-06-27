@@ -9,6 +9,7 @@ caller 구분은 JWT payload의 source 필드로:
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import AccessTokenClaims
 from app.db.dependencies import get_current_source, get_current_user_id, get_db
 from app.schemas.device import DetectionCreate, DeviceCreate, DeviceResponse, DeviceUpdate
 from app.services import device_service
@@ -41,9 +42,9 @@ async def delete_device(device_id: int, user_id: int = Depends(get_current_user_
 async def post_detection(
     device_id: int,
     payload: DetectionCreate,
-    ctx: dict = Depends(get_current_source),
+    ctx: AccessTokenClaims = Depends(get_current_source),
     db: AsyncSession = Depends(get_db),
 ):
     """웨어러블 또는 HEARING-AI-SE가 호출. JWT source 필드로 caller 식별."""
-    await device_service.handle_detection(db, device_id, payload, source=ctx["source"])
+    await device_service.handle_detection(db, device_id, payload, source=ctx.source)
     return {"ok": True}

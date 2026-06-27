@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -7,6 +9,15 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.core.exceptions import AuthException
+
+USER_ACCESS_SOURCES = frozenset({"user"})
+DETECTION_ACCESS_SOURCES = frozenset({"device", "ai-server"})
+
+
+@dataclass(frozen=True)
+class AccessTokenClaims:
+    user_id: int
+    source: str
 
 
 def hash_password(password: str) -> str:
@@ -43,6 +54,26 @@ def decode_token(token: str) -> dict[str, Any]:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except JWTError as e:
         raise AuthException("Invalid or expired token") from e
+
+
+def decode_access_token(
+    token: str,
+    allowed_sources: Collection[str],
+) -> AccessTokenClaims:
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise AuthException("Invalid token type")
+
+    source = payload.get("source")
+    if not isinstance(source, str) or source not in allowed_sources:
+        raise AuthException("Invalid token source")
+
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise AuthException("Invalid token subject") from e
+
+    return AccessTokenClaims(user_id=user_id, source=source)
 
 
 async def verify_google_id_token(id_token: str) -> dict[str, Any]:
