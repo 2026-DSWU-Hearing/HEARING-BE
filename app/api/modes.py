@@ -132,12 +132,6 @@ async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdateRequest, use
     )
 
 
-@router.delete("/{mode_id}/sounds/{sound_id}")
-async def remove_mode_sound(mode_id: int, sound_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    await mode_service.remove_mode_sound(db, user_id, mode_id, sound_id)
-    return {"ok": True}
-
-
 @router.patch("/{mode_id}/sounds/{sound_id}", response_model=ModeSoundActiveResponse)
 async def update_mode_sound_active(
     mode_id: int,

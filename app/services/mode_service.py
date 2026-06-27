@@ -79,18 +79,6 @@ async def update_mode_sounds(db: AsyncSession, user_id: int, mode_id: int, paylo
     return await get_or_404(db, Mode, mode.id)
 
 
-async def remove_mode_sound(db: AsyncSession, user_id: int, mode_id: int, sound_id: int) -> None:
-    """모드에서 소리 1건 제거. 마지막 1건은 남겨야 하므로 거부(모드당 최소 1개)."""
-    mode = await _get_owned_mode(db, user_id, mode_id)
-    link = next((ms for ms in mode.sound_links if ms.sound_id == sound_id), None)
-    if link is None:
-        raise NotFoundException("Sound not in this mode")
-    if len(mode.sound_links) <= MIN_SOUNDS_PER_MODE:
-        raise ValidationException(f"At least {MIN_SOUNDS_PER_MODE} sound required")
-    mode.sound_links.remove(link)
-    await db.commit()
-
-
 async def set_mode_sound_active(
     db: AsyncSession, user_id: int, mode_id: int, sound_id: int, is_active: bool
 ) -> None:
