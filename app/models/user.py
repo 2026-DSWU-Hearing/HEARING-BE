@@ -16,6 +16,7 @@ class User(Base, TimestampMixin):
 
     haptic_strength: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     do_not_disturb: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     fcm_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

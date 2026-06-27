@@ -7,6 +7,7 @@ from app.schemas.user import (
     DoNotDisturbUpdate,
     FcmTokenUpdate,
     HapticUpdate,
+    PushEnabledUpdate,
     UserResponse,
     UserUpdate,
 )
@@ -33,6 +34,11 @@ async def update_haptic(payload: HapticUpdate, user_id: int = Depends(get_curren
 @router.patch("/me/do-not-disturb", response_model=UserResponse)
 async def update_dnd(payload: DoNotDisturbUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     return await user_service.update_do_not_disturb(db, user_id, payload)
+
+
+@router.patch("/me/push-enabled", response_model=UserResponse)
+async def update_push_enabled(payload: PushEnabledUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    return await user_service.update_push_enabled(db, user_id, payload)
 
 
 @router.post("/me/fcm-token", response_model=UserResponse)

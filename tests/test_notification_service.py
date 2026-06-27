@@ -37,6 +37,7 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
     user = SimpleNamespace(
         id=1,
         do_not_disturb=False,
+        push_enabled=True,
         fcm_token="expired-token",
     )
     device = SimpleNamespace(id=1)
@@ -81,3 +82,56 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
     statement = str(database_session.executed_statements[0])
     assert "users.id" in statement
     assert "users.fcm_token" in statement
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
+    database_session = FakeDatabaseSession()
+    user = SimpleNamespace(
+        id=1,
+        do_not_disturb=False,
+        push_enabled=False,
+        fcm_token="valid-token",
+    )
+    device = SimpleNamespace(id=1)
+    payload = DetectionCreate(
+        sound_id=20,
+        sound_name="test sound",
+        sound_category="test category",
+        detected_at=datetime.now(timezone.utc),
+    )
+    broadcasts = []
+
+    async def get_active_sound_ids(*args, **kwargs):
+        return {20}
+
+    async def get_user(*args, **kwargs):
+        return user
+
+    async def fail_push(*args, **kwargs):
+        raise AssertionError("FCM push should not be sent when push_enabled is false")
+
+    async def broadcast(user_id, notification):
+        broadcasts.append((user_id, notification))
+
+    monkeypatch.setattr(
+        notification_service,
+        "_get_active_mode_sound_ids",
+        get_active_sound_ids,
+    )
+    monkeypatch.setattr(notification_service, "get_or_404", get_user)
+    monkeypatch.setattr(push_service, "send_detection_push", fail_push)
+    monkeypatch.setattr(detection_handler, "broadcast_detection", broadcast)
+
+    notification = await notification_service.handle_detection(
+        db=database_session,
+        user_id=1,
+        device=device,
+        payload=payload,
+        source="ai-server",
+    )
+
+    assert notification is database_session.added_instance
+    assert database_session.commit_count == 1
+    assert database_session.executed_statements == []
+    assert broadcasts == [(1, notification)]

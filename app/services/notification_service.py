@@ -74,7 +74,7 @@ async def handle_detection(
     await db.commit()
     await db.refresh(notification)
 
-    if user.fcm_token:  # do_not_disturb 는 위에서 이미 차단됨
+    if user.push_enabled and user.fcm_token:  # do_not_disturb 는 위에서 이미 차단됨
         fcm_token = user.fcm_token
         try:
             await push_service.send_detection_push(fcm_token, notification)
