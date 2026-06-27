@@ -31,6 +31,13 @@ async def handle_detection(
     from app.services import push_service
     from app.websocket import detection_handler
 
+    # 방해금지(완전 차단): 켜져 있으면 감지를 통째로 무시한다.
+    # 기록(DB)·WS 인앱 알림·FCM 푸시 전부 중단 (앱 푸시 OFF 와 달리 기록도 남기지 않음).
+    user = await get_or_404(db, User, user_id)
+    if user.do_not_disturb:
+        logger.info("do-not-disturb on, skip detection user_id=%s", user_id)
+        return None
+
     active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
     if active_sound_ids is None:
         logger.info("no active mode for user_id=%s, skip", user_id)
@@ -67,8 +74,7 @@ async def handle_detection(
     await db.commit()
     await db.refresh(notification)
 
-    user = await get_or_404(db, User, user_id)
-    if not user.do_not_disturb and user.fcm_token:
+    if user.fcm_token:  # do_not_disturb 는 위에서 이미 차단됨
         fcm_token = user.fcm_token
         try:
             await push_service.send_detection_push(fcm_token, notification)
