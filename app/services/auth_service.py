@@ -24,12 +24,13 @@ async def google_login(db: AsyncSession, payload: GoogleLoginRequest) -> TokenRe
     result = await db.execute(select(User).where(User.google_sub == info["sub"]))
     user = result.scalar_one_or_none()
     if not user:
+        # terms_agreed 는 기본 False — 실제 약관 동의(PATCH /users/me/agreement)로만 True 가 된다.
+        # (게스트는 데모 편의상 True 유지)
         user = User(
             email=info["email"],
             nickname=info.get("name", info["email"].split("@")[0]),
             is_google_user=True,
             google_sub=info["sub"],
-            terms_agreed=True,
         )
         db.add(user)
         await db.commit()
