@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # 기본값 없음 — 누락 시 시작 단계에서 ValidationError(fail-closed). 환경변수/.env 에 반드시 설정.
-    DATABASE_URL: str
+    DATABASE_URL: str = Field(min_length=1)
     JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
