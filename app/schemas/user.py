@@ -11,6 +11,7 @@ class UserResponse(BaseModel):
     haptic_strength: int
     do_not_disturb: bool
     push_enabled: bool
+    terms_agreed: bool
 
 
 class UserUpdate(BaseModel):
