@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import bcrypt
 from jose import JWTError, jwt
 
 from app.core.config import settings
@@ -18,14 +17,6 @@ DETECTION_ACCESS_SOURCES = frozenset({"device", "ai-server"})
 class AccessTokenClaims:
     user_id: int
     source: str
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
 def _create_token(payload: dict[str, Any], expires_delta: timedelta) -> str:

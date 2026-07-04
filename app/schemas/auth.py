@@ -1,17 +1,4 @@
-from pydantic import BaseModel, EmailStr
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    nickname: str
-    disability_type: str | None = None
-    terms_agreed: bool
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+from pydantic import BaseModel
 
 
 class GoogleLoginRequest(BaseModel):
@@ -26,7 +13,3 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
-
-
-class EmailAvailabilityResponse(BaseModel):
-    available: bool
