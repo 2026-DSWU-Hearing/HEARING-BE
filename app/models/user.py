@@ -9,7 +9,6 @@ class User(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     nickname: Mapped[str] = mapped_column(String(50), nullable=False)
     disability_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
