@@ -13,7 +13,7 @@ class User(Base, TimestampMixin):
     nickname: Mapped[str] = mapped_column(String(50), nullable=False)
     disability_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    haptic_strength: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    haptic_strength: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     do_not_disturb: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
