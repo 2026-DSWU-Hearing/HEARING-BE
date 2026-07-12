@@ -1,16 +1,27 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def normalize_mac(mac: str) -> str:
+    """등록(DeviceCreate)과 WS 접속(resolve_device_id) 양쪽에서 동일 정규화 —
+    대소문자/공백 차이로 등록된 기기를 못 찾아 4404 가 나는 일이 없도록."""
+    return mac.strip().upper()
 
 
 class DeviceCreate(BaseModel):
-    nickname: str
-    mac_address: str
+    nickname: str = Field(min_length=1, max_length=50)
+    mac_address: str = Field(min_length=1, max_length=50)
+
+    @field_validator("mac_address")
+    @classmethod
+    def _normalize_mac(cls, v: str) -> str:
+        return normalize_mac(v)
 
 
 class DeviceUpdate(BaseModel):
-    nickname: str | None = None
-    battery_level: int | None = None
+    nickname: str | None = Field(default=None, min_length=1, max_length=50)
+    battery_level: int | None = Field(default=None, ge=0, le=100)
     is_connected: bool | None = None
 
 

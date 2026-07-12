@@ -5,7 +5,7 @@
   2) 활성 모드의 ModeSound 목록과 감지된 소리 대조
      - sound_id 가 오면 그대로, AI서버처럼 한글 (category, name)만 오면 이름으로 해석
   3) 매칭 안되면 → 무시 (DB 저장하지 않음)
-  4) 매칭되면 → Notification 저장 + FCM push + WS broadcast
+  4) 매칭되면 → Notification 저장 + FCM push + WS broadcast + 기기 진동 명령
 """
 
 from sqlalchemy import select, update
@@ -29,7 +29,7 @@ async def handle_detection(
     source: str,
 ) -> Notification | None:
     from app.services import push_service
-    from app.websocket import detection_handler
+    from app.websocket import detection_handler, device_handler
 
     # 방해금지(완전 차단): 켜져 있으면 감지를 통째로 무시한다.
     # 기록(DB)·WS 인앱 알림·FCM 푸시 전부 중단 (앱 푸시 OFF 와 달리 기록도 남기지 않음).
@@ -89,6 +89,15 @@ async def handle_detection(
                 logger.info("removed unregistered FCM token for user_id=%s", user_id)
 
     await detection_handler.broadcast_detection(user_id, notification)
+
+    # 하드웨어 진동 명령 — do_not_disturb·모드 매칭은 위에서 이미 통과했다.
+    # 기기 WS 가 끊겨 있으면 드롭 (진동은 실시간 경보라 큐잉하지 않음).
+    await device_handler.send_vibrate(
+        device_id=device.id,
+        strength=user.haptic_strength,
+        sound_name=notification.sound_name,
+        sound_category=notification.sound_category,
+    )
     return notification
 
 
