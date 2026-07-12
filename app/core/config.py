@@ -1,9 +1,15 @@
-from pydantic import Field, field_validator
+from typing import Literal
+
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # 배포 환경 구분. prod 에서 DEV_AUTH_BYPASS 가 켜져 있으면 기동 자체를 거부한다(아래 validator).
+    # Literal 이라 오타(예: "production")도 시작 단계에서 잡힌다.
+    ENVIRONMENT: Literal["dev", "prod"] = "dev"
 
     # 기본값 없음 — 누락 시 시작 단계에서 ValidationError(fail-closed). 환경변수/.env 에 반드시 설정.
     DATABASE_URL: str = Field(min_length=1)
@@ -31,6 +37,13 @@ class Settings(BaseSettings):
         if len(v) < 32:
             raise ValueError("JWT_SECRET must be a strong random value (>= 32 chars)")
         return v
+
+    @model_validator(mode="after")
+    def _no_auth_bypass_outside_dev(self) -> "Settings":
+        # 인증 우회는 로컬 개발 전용. .env 가 그대로 서버에 올라가는 사고를 기동 실패로 막는다.
+        if self.DEV_AUTH_BYPASS and self.ENVIRONMENT != "dev":
+            raise ValueError("DEV_AUTH_BYPASS must be false when ENVIRONMENT is not 'dev'")
+        return self
 
 
 settings = Settings()

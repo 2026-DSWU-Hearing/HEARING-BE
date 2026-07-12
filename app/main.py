@@ -1,12 +1,21 @@
 from fastapi import FastAPI
 
+from app.core.config import settings
 from app.core.handlers import register_exception_handlers
+from app.core.logger import logger
 from app.core.middleware import setup_middleware
 from app.api import auth, users, modes, sounds, devices, notifications, websocket
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="HEARING-BE", version="0.1.0")
+
+    # prod 에서는 config validator 가 기동을 막지만, dev 에서도 켜져 있음을 부팅 로그로 상기시킨다.
+    if settings.DEV_AUTH_BYPASS:
+        logger.warning(
+            "DEV_AUTH_BYPASS is ON — tokenless requests run as user id=%s. Never use outside local dev.",
+            settings.DEV_USER_ID,
+        )
 
     setup_middleware(app)
     register_exception_handlers(app)
