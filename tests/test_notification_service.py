@@ -39,6 +39,7 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
         do_not_disturb=False,
         push_enabled=True,
         fcm_token="expired-token",
+        haptic_strength=50,
     )
     device = SimpleNamespace(id=1)
     payload = DetectionCreate(
@@ -92,6 +93,7 @@ async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
         do_not_disturb=False,
         push_enabled=False,
         fcm_token="valid-token",
+        haptic_strength=50,
     )
     device = SimpleNamespace(id=1)
     payload = DetectionCreate(

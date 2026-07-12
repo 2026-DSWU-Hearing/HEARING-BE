@@ -2,8 +2,10 @@
 감지 결과를 모두 POST /devices/{id}/detections로 받아 처리한다."""
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictException
 from app.core.logger import logger
 from app.db.functions import get_or_404, get_owned_or_403
 from app.models.device import Device
@@ -16,9 +18,19 @@ async def list_devices(db: AsyncSession, user_id: int) -> list[Device]:
 
 
 async def create_device(db: AsyncSession, user_id: int, payload: DeviceCreate) -> Device:
+    # 실기기 MAC 은 unique — 이미 등록돼 있으면(내 것이든 남의 것이든) 409.
+    # 기기 이전은 기존 소유자가 삭제 후 재등록하는 흐름.
+    existing = await db.execute(select(Device.id).where(Device.mac_address == payload.mac_address))
+    if existing.scalar_one_or_none() is not None:
+        raise ConflictException("이미 등록된 MAC 주소입니다")
+
     device = Device(user_id=user_id, nickname=payload.nickname, mac_address=payload.mac_address)
     db.add(device)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as e:  # 동시 등록 레이스 — unique 제약이 최종 방어선
+        await db.rollback()
+        raise ConflictException("이미 등록된 MAC 주소입니다") from e
     await db.refresh(device)
     return device
 
@@ -33,6 +45,14 @@ async def update_device(db: AsyncSession, user_id: int, device_id: int, payload:
         device.is_connected = payload.is_connected
     await db.commit()
     await db.refresh(device)
+
+    if payload.is_connected is False:
+        # FE '연결 해제' — DB 플래그만 바꾸면 기기 WS 가 살아있는 동안 가짜 상태가 되므로
+        # 서버측에서 WS 를 닫는다. (핸들러 finally 는 이미 빠진 연결이라 DB 를 다시 안 건드림)
+        from app.websocket.manager import device_manager
+
+        if await device_manager.close_device(device_id):
+            logger.info("device ws closed by disconnect request device_id=%s", device_id)
     return device
 
 

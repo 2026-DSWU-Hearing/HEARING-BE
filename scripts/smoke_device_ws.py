@@ -1,0 +1,164 @@
+"""기기 WS 엔드투엔드 스모크 테스트 (PostgreSQL 불필요 — 인메모리 SQLite).
+
+검증 경로 (WS3 전체 수명주기):
+  거절: 토큰 불량 → 4401, 미등록 MAC → 4404 (핸드셰이크 수락 직후 코드로 닫힘 — 실클라이언트도 코드 수신)
+  중복 MAC 등록(대소문자 달라도) → 409
+  접속(소문자 MAC 으로 — 정규화 검증) → is_connected=True → status 로 battery_level 반영
+  감지 POST 매칭 → 기기 WS 로 vibrate(strength=haptic_strength) 수신
+  PATCH is_connected=false → 서버가 기기 WS 를 닫음(1000) + is_connected=False 유지
+
+실행:
+  python scripts/smoke_device_ws.py
+"""
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# 프로젝트 루트를 import 경로에 추가 (어느 cwd에서 실행해도 app 패키지를 찾도록)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
+from starlette.websockets import WebSocketDisconnect  # noqa: E402
+
+from app.core.security import create_access_token, create_device_token  # noqa: E402
+from app.db.base import Base  # noqa: E402
+from app.db.dependencies import get_db  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import device, mode, notification, sound, user  # noqa: F401,E402  (메타데이터 등록)
+from app.models.sound import Sound, SoundCategory  # noqa: E402
+from app.models.user import User  # noqa: E402
+from app.websocket import device_handler  # noqa: E402
+
+MAC = "AA:BB:CC:00:11:22"
+
+# StaticPool + 단일 연결이라야 인메모리 DB가 모든 세션에서 공유된다.
+engine = create_async_engine(
+    "sqlite+aiosqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def override_get_db():
+    async with TestSession() as session:
+        yield session
+
+
+async def seed() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with TestSession() as db:
+        db.add(User(id=1, email="dev@hearing.local", nickname="dev", terms_agreed=True, haptic_strength=70))
+        db.add(SoundCategory(id=1, name="긴급"))
+        await db.flush()
+        db.add(Sound(id=1, name="사이렌", category_id=1))
+        await db.commit()
+
+
+def auth(source: str = "user") -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(1, source=source)}"}
+
+
+def expect_ws_reject(client: TestClient, url: str, expected_code: int) -> None:
+    """거절 계약: 핸드셰이크는 수락되고, 첫 수신에서 지정 코드로 닫혀야 한다.
+    (accept 전에 close 하면 클라이언트가 코드를 못 받으므로 서버는 accept 후 닫는다)"""
+    with client.websocket_connect(url) as ws:
+        try:
+            ws.receive_text()
+        except WebSocketDisconnect as e:
+            assert e.code == expected_code, e.code
+            return
+    raise AssertionError(f"연결이 닫히지 않음 (기대 close {expected_code})")
+
+
+def main() -> None:
+    import asyncio
+
+    asyncio.run(seed())
+    app.dependency_overrides[get_db] = override_get_db
+    # 기기 WS 핸들러는 요청 스코프 밖(수명주기·MAC 해석)에서 자체 세션을 쓰므로 직접 교체한다.
+    original_session_local = device_handler.AsyncSessionLocal
+    device_handler.AsyncSessionLocal = TestSession
+
+    device_token = create_device_token(days=1)
+    log: list[tuple[str, object]] = []
+    try:
+        with TestClient(app) as client:
+            # 준비: 기기 등록 + 모드 생성/활성화 (감지 매칭용)
+            r = client.post("/devices", headers=auth(), json={"nickname": "내 목걸이", "mac_address": MAC})
+            assert r.status_code == 200, r.text
+            device_id = r.json()["id"]
+
+            # 중복 MAC (소문자로 보내도 정규화돼 같은 기기) → 409
+            r = client.post("/devices", headers=auth(), json={"nickname": "중복", "mac_address": MAC.lower()})
+            assert r.status_code == 409, f"{r.status_code} {r.text}"
+            log.append(("duplicate mac register", r.status_code))
+
+            r = client.post("/modes", headers=auth(), json={
+                "name": "외출", "icon": "walk", "sounds": [{"sound_id": 1, "name": "사이렌"}],
+            })
+            assert r.status_code == 200, r.text
+            client.patch(f"/modes/{r.json()['mode_id']}/activate", headers=auth())
+
+            # 거절 1: 토큰 불량 → 4401 (user 토큰은 source가 달라 거절돼야 함)
+            expect_ws_reject(client, f"/ws/devices?token={create_access_token(1)}&mac={MAC}", 4401)
+            log.append(("close on bad token", 4401))
+
+            # 거절 2: 미등록 MAC → 4404
+            expect_ws_reject(client, f"/ws/devices?token={device_token}&mac=FF:FF:FF:FF:FF:FF", 4404)
+            log.append(("close on unknown mac", 4404))
+
+            # 정상 수명주기 — 하드웨어가 소문자 MAC 을 보내도 정규화로 매칭돼야 한다
+            with client.websocket_connect(f"/ws/devices?token={device_token}&mac={MAC.lower()}") as ws:
+                r = client.get("/devices", headers=auth())
+                assert r.json()[0]["is_connected"] is True, r.text
+                log.append(("is_connected after connect", True))
+
+                ws.send_text(json.dumps({"type": "status", "battery_level": 77, "connection_type": "hotspot"}))
+
+                # 감지 매칭 → 이 소켓으로 vibrate 명령이 와야 한다
+                r = client.post(f"/devices/{device_id}/detections", headers=auth("ai-server"), json={
+                    "sound_category": "긴급", "sound_name": "사이렌", "confidence": 0.97,
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                })
+                assert r.status_code == 200, r.text
+                command = ws.receive_json()
+                assert command == {
+                    "type": "vibrate", "strength": 70, "sound_name": "사이렌", "sound_category": "긴급",
+                }, command
+                log.append(("vibrate strength", command["strength"]))
+
+                r = client.get("/devices", headers=auth())
+                assert r.json()[0]["battery_level"] == 77, r.text
+                log.append(("battery after status", 77))
+
+                # FE '연결 해제' → 서버가 이 WS 를 닫는다
+                r = client.patch(f"/devices/{device_id}", headers=auth(), json={"is_connected": False})
+                assert r.status_code == 200, r.text
+                try:
+                    ws.receive_json()
+                    raise AssertionError("연결 해제 후에도 WS 가 살아있음")
+                except WebSocketDisconnect as e:
+                    assert e.code == 1000, e.code
+                    log.append(("close on disconnect request", e.code))
+
+            r = client.get("/devices", headers=auth())
+            assert r.json()[0]["is_connected"] is False, r.text
+            log.append(("is_connected after close", False))
+    finally:
+        app.dependency_overrides.clear()
+        device_handler.AsyncSessionLocal = original_session_local
+        asyncio.run(engine.dispose())  # aiosqlite 커넥션 스레드 정리 — 없으면 프로세스가 종료되지 않는다
+
+    print("DEVICE WS SMOKE OK")
+    for key, value in log:
+        print(f"  {key}: {value}")
+
+
+if __name__ == "__main__":
+    main()

@@ -11,6 +11,7 @@ from app.core.exceptions import AuthException
 
 USER_ACCESS_SOURCES = frozenset({"user"})
 DETECTION_ACCESS_SOURCES = frozenset({"device", "ai-server"})
+DEVICE_WS_SOURCES = frozenset({"device"})
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,15 @@ def create_access_token(user_id: int, source: str = "user") -> str:
     return _create_token(
         {"sub": str(user_id), "source": source, "type": "access"},
         timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+
+def create_device_token(days: int = 365) -> str:
+    """하드웨어(ESP32) WS용 장수명 토큰. '정품 기기' 증명용 — 어느 기기인지는 접속 시 MAC 으로
+    정해지므로 sub 를 특정 유저/기기에 묶지 않는다(0). 발급: scripts/make_device_token.py"""
+    return _create_token(
+        {"sub": "0", "source": "device", "type": "access"},
+        timedelta(days=days),
     )
 
 

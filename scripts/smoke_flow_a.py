@@ -120,6 +120,7 @@ async def main() -> None:
             assert notifs[0]["sound_name"] == "화재경보기", notifs[0]
     finally:
         app.dependency_overrides.clear()
+        await engine.dispose()  # aiosqlite 커넥션 스레드 정리 — 없으면 프로세스가 종료되지 않는다
 
     print("SMOKE OK")
     for key, value in log:
