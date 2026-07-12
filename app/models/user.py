@@ -14,6 +14,7 @@ class User(Base, TimestampMixin):
     disability_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     haptic_strength: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    emergency_haptic_boost: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     do_not_disturb: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
