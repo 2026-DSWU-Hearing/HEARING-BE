@@ -97,6 +97,7 @@ async def handle_detection(
         strength=user.haptic_strength,
         sound_name=notification.sound_name,
         sound_category=notification.sound_category,
+        direction=payload.direction,
     )
     return notification
 
