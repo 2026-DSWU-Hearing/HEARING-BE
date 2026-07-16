@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundException, ValidationException
 from app.db.functions import get_or_404, get_owned_or_403
 from app.models.mode import Mode, ModeSound
-from app.schemas.mode import ModeCreate, ModeSoundsUpdate
 
 MAX_MODES_PER_USER = 6
 MIN_SOUNDS_PER_MODE = 1
@@ -25,15 +24,15 @@ async def get_active_mode(db: AsyncSession, user_id: int) -> Mode | None:
     return result.scalar_one_or_none()
 
 
-async def create_mode(db: AsyncSession, user_id: int, payload: ModeCreate) -> Mode:
+async def create_mode(db: AsyncSession, user_id: int, name: str, icon: str, sound_ids: list[int]) -> Mode:
     existing = await db.execute(select(Mode.id).where(Mode.user_id == user_id))
     if len(list(existing.scalars().all())) >= MAX_MODES_PER_USER:
         raise ValidationException(f"Maximum {MAX_MODES_PER_USER} modes allowed")
-    if len(payload.sound_ids) < MIN_SOUNDS_PER_MODE:
+    if len(sound_ids) < MIN_SOUNDS_PER_MODE:
         raise ValidationException(f"At least {MIN_SOUNDS_PER_MODE} sound required")
 
-    mode = Mode(user_id=user_id, name=payload.name, icon=payload.icon, is_active=False)
-    for sid in payload.sound_ids:
+    mode = Mode(user_id=user_id, name=name, icon=icon, is_active=False)
+    for sid in sound_ids:
         mode.sound_links.append(ModeSound(sound_id=sid))
     db.add(mode)
     await db.commit()
@@ -70,11 +69,11 @@ async def activate_mode(db: AsyncSession, user_id: int, mode_id: int) -> Mode:
     return await get_or_404(db, Mode, mode.id)
 
 
-async def update_mode_sounds(db: AsyncSession, user_id: int, mode_id: int, payload: ModeSoundsUpdate) -> Mode:
-    if len(payload.sound_ids) < MIN_SOUNDS_PER_MODE:
+async def update_mode_sounds(db: AsyncSession, user_id: int, mode_id: int, sound_ids: list[int]) -> Mode:
+    if len(sound_ids) < MIN_SOUNDS_PER_MODE:
         raise ValidationException(f"At least {MIN_SOUNDS_PER_MODE} sound required")
     mode = await _get_owned_mode(db, user_id, mode_id)
-    await _set_sound_links(db, mode, payload.sound_ids)
+    await _set_sound_links(db, mode, sound_ids)
     await db.commit()
     return await get_or_404(db, Mode, mode.id)
 

@@ -32,3 +32,8 @@ class ConflictException(HearingException):
 class ValidationException(HearingException):
     status_code = 422
     code = "VALIDATION_ERROR"
+
+
+class RateLimitException(HearingException):
+    status_code = 429
+    code = "RATE_LIMITED"

@@ -12,7 +12,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "seed_sound_catalog"
+revision = "e1f2a3b4c5d6"
 down_revision = "d0e1f2a3b4c5"
 
 

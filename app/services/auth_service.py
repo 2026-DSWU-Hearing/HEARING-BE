@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -5,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthException
+from app.core.logger import logger
+from app.core.redis import get_redis
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -125,7 +128,46 @@ async def refresh_tokens(refresh_token: str) -> TokenResponse:
     payload = decode_token(refresh_token)
     if payload.get("type") != "refresh":
         raise AuthException("Invalid refresh token")
+    if await _is_refresh_blacklisted(refresh_token):
+        raise AuthException("Refresh token revoked")
     return _issue_tokens(int(payload["sub"]))
+
+
+# --- 로그아웃 = refresh 토큰 무효화 (Redis 블랙리스트) --------------------------
+# JWT 는 stateless 라 서버가 못 지우므로, 로그아웃된 refresh 토큰을 남은 수명만큼
+# Redis 에 올려 재발급을 차단한다(TTL 이 지나면 토큰도 만료라 자동 소멸).
+# Redis 다운 시 fail-open: 차단만 안 될 뿐 로그인/재발급/로그아웃 자체는 정상(경고 로그).
+
+
+def _refresh_blacklist_key(refresh_token: str) -> str:
+    # 원문 토큰을 Redis 에 남기지 않도록 해시로 키를 만든다
+    return "bl:refresh:" + hashlib.sha256(refresh_token.encode()).hexdigest()
+
+
+async def logout(refresh_token: str) -> None:
+    """refresh 토큰을 남은 수명만큼 블랙리스트에 올린다.
+    불량/만료 토큰은 조용히 무시 — 로그아웃은 항상 성공해야 한다."""
+    try:
+        payload = decode_token(refresh_token)
+    except AuthException:
+        return
+    if payload.get("type") != "refresh":
+        return
+    ttl = int(payload["exp"] - datetime.now(timezone.utc).timestamp())
+    if ttl <= 0:
+        return
+    try:
+        await get_redis().set(_refresh_blacklist_key(refresh_token), "1", ex=ttl)
+    except Exception as e:
+        logger.warning("logout blacklist skipped (redis unavailable): %s", e)
+
+
+async def _is_refresh_blacklisted(refresh_token: str) -> bool:
+    try:
+        return await get_redis().exists(_refresh_blacklist_key(refresh_token)) == 1
+    except Exception as e:
+        logger.warning("blacklist check skipped (redis unavailable): %s", e)
+        return False
 
 
 def _issue_tokens(user_id: int) -> TokenResponse:

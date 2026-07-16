@@ -6,8 +6,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "drop_user_password_hash"
-down_revision = "seed_sound_catalog"
+revision = "f2a3b4c5d6e7"
+down_revision = "e1f2a3b4c5d6"
 
 
 def upgrade() -> None:

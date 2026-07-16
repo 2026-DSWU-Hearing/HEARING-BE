@@ -16,6 +16,11 @@ class Settings(BaseSettings):
 
     FCM_CREDENTIALS_PATH: str = "firebase-credentials.json"
 
+    # 인메모리-임시 저장소 (게스트 rate limit, refresh 토큰 블랙리스트). PostgreSQL=관계형-영구와 역할 분리.
+    REDIS_URL: str = "redis://localhost:6379/0"
+    # 게스트 로그인 IP당 시간당 허용 횟수 (호출마다 유저+샘플데이터가 생성되므로 봇 방어 필요)
+    GUEST_RATE_LIMIT_PER_HOUR: int = 10
+
     # MVP 개발용: True 면 인증 헤더 없이 DEV_USER_ID 로 통과 (운영에서는 반드시 False)
     DEV_AUTH_BYPASS: bool = False
     DEV_USER_ID: int = 1
