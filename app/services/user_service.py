@@ -2,7 +2,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.functions import get_or_404
 from app.models.user import User
-from app.schemas.user import AgreementUpdate, DoNotDisturbUpdate, FcmTokenUpdate, HapticUpdate, PushEnabledUpdate, UserUpdate
+from app.schemas.user import (
+    AgreementUpdate,
+    DoNotDisturbUpdate,
+    EmergencyHapticBoostUpdate,
+    FcmTokenUpdate,
+    HapticUpdate,
+    PushEnabledUpdate,
+    UserUpdate,
+)
 
 
 async def get_me(db: AsyncSession, user_id: int) -> User:
@@ -23,6 +31,14 @@ async def update_profile(db: AsyncSession, user_id: int, payload: UserUpdate) ->
 async def update_haptic(db: AsyncSession, user_id: int, payload: HapticUpdate) -> User:
     user = await get_or_404(db, User, user_id)
     user.haptic_strength = payload.haptic_strength
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def update_emergency_haptic_boost(db: AsyncSession, user_id: int, payload: EmergencyHapticBoostUpdate) -> User:
+    user = await get_or_404(db, User, user_id)
+    user.emergency_haptic_boost = payload.emergency_haptic_boost
     await db.commit()
     await db.refresh(user)
     return user
