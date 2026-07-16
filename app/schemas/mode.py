@@ -1,16 +1,6 @@
 from pydantic import BaseModel
 
 
-class ModeCreate(BaseModel):
-    name: str
-    icon: str
-    sound_ids: list[int]
-
-
-class ModeSoundsUpdate(BaseModel):
-    sound_ids: list[int]
-
-
 # --- 프론트(home) 읽기 응답 계약: snake_case + 래핑 ---
 
 
@@ -53,13 +43,9 @@ class ModeSoundItem(BaseModel):
     name: str
 
 
-class ModeCreateRequest(BaseModel):
-    name: str
-    icon: str
-    sounds: list[ModeSoundInput]
+class ModeWriteRequest(BaseModel):
+    """모드 생성(POST)·전체 수정(PUT) 공통 요청 바디. 응답은 ModeWriteResponse."""
 
-
-class ModeUpdateRequest(BaseModel):
     name: str
     icon: str
     sounds: list[ModeSoundInput]

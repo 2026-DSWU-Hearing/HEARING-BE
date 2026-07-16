@@ -6,8 +6,6 @@ from app.db.dependencies import get_current_user_id, get_db
 from app.models.mode import Mode
 from app.schemas.mode import (
     ModeActivateResponse,
-    ModeCreate,
-    ModeCreateRequest,
     ModeDetailResponse,
     ModeDetailSoundItem,
     ModeIconItem,
@@ -18,9 +16,8 @@ from app.schemas.mode import (
     ModeSoundActiveUpdate,
     ModeSoundItem,
     ModeSoundsResponse,
-    ModeSoundsUpdate,
     ModeSoundsUpdateRequest,
-    ModeUpdateRequest,
+    ModeWriteRequest,
     ModeWriteResponse,
 )
 from app.services import mode_service
@@ -84,17 +81,19 @@ async def get_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db
 
 
 @router.post("", response_model=ModeWriteResponse)
-async def create_mode(payload: ModeCreateRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+async def create_mode(payload: ModeWriteRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     mode = await mode_service.create_mode(
         db,
         user_id,
-        ModeCreate(name=payload.name, icon=payload.icon, sound_ids=[s.sound_id for s in payload.sounds]),
+        name=payload.name,
+        icon=payload.icon,
+        sound_ids=[s.sound_id for s in payload.sounds],
     )
     return _write_response(mode)
 
 
 @router.put("/{mode_id}", response_model=ModeWriteResponse)
-async def update_mode(mode_id: int, payload: ModeUpdateRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+async def update_mode(mode_id: int, payload: ModeWriteRequest, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     mode = await mode_service.update_mode(
         db,
         user_id,
@@ -124,7 +123,7 @@ async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdateRequest, use
         db,
         user_id,
         mode_id,
-        ModeSoundsUpdate(sound_ids=[s.sound_id for s in payload.sounds]),
+        sound_ids=[s.sound_id for s in payload.sounds],
     )
     return ModeSoundsResponse(
         mode_id=mode.id,
