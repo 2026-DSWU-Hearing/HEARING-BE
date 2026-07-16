@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Integer, String
+from sqlalchemy import Boolean, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -15,7 +15,12 @@ class User(Base, TimestampMixin):
 
     haptic_strength: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     do_not_disturb: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    push_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=false(),
+        nullable=False,
+    )
 
     fcm_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
