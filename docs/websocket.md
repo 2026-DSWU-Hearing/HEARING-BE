@@ -64,8 +64,10 @@ ws://localhost:8000/ws/devices?token={deviceToken}&mac={macAddress}
 ## 송신 (서버 → 기기) — 감지가 활성 모드에 매칭될 때
 
 ```json
-{ "type": "vibrate", "strength": 50, "sound_name": "사이렌", "sound_category": "긴급" }
+{ "type": "vibrate", "strength": 50, "sound_name": "사이렌", "sound_category": "긴급", "direction": "LEFT" }
 ```
 
 - `strength`: 사용자 설정 진동 세기 (`users.haptic_strength`, 0~100)
+- `direction`: 소리가 감지된 방향 (`"FRONT" | "BACK" | "LEFT" | "RIGHT" | "UNKNOWN"`)
+  - 감지 요청에 방향값이 없으면 `"UNKNOWN"`
 - 기기 오프라인이면 명령은 드롭 (웹앱 알림·감지 기록은 정상 진행)

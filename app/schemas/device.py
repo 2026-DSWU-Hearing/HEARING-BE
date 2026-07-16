@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+Direction = Literal["FRONT", "BACK", "LEFT", "RIGHT", "UNKNOWN"]
 
 
 def normalize_mac(mac: str) -> str:
@@ -44,5 +48,6 @@ class DetectionCreate(BaseModel):
     sound_category: str
     confidence: float | None = None
     detected_at: datetime
+    direction: Direction = "UNKNOWN"
     latitude: float | None = None
     longitude: float | None = None

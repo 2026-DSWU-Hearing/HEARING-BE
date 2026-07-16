@@ -16,7 +16,7 @@ from sqlalchemy import select, update
 from app.core.logger import logger
 from app.db.session import AsyncSessionLocal
 from app.models.device import Device
-from app.schemas.device import normalize_mac
+from app.schemas.device import Direction, normalize_mac
 from app.websocket.manager import device_manager
 
 
@@ -52,7 +52,13 @@ async def handle_device_socket(ws: WebSocket, device_id: int) -> None:
             await _set_connected(device_id, False)
 
 
-async def send_vibrate(device_id: int, strength: int, sound_name: str, sound_category: str) -> bool:
+async def send_vibrate(
+    device_id: int,
+    strength: int,
+    sound_name: str,
+    sound_category: str,
+    direction: Direction = "UNKNOWN",
+) -> bool:
     """notification_service 가 매칭 성공 시 호출. 기기 오프라인이면 드롭+로그.
     진동은 실시간 경보라 큐잉하지 않는다 (웹앱 알림·감지 기록은 호출측에서 이미 진행됨)."""
     sent = await device_manager.send_to_device(device_id, {
@@ -60,6 +66,7 @@ async def send_vibrate(device_id: int, strength: int, sound_name: str, sound_cat
         "strength": strength,
         "sound_name": sound_name,
         "sound_category": sound_category,
+        "direction": direction,
     })
     if sent:
         logger.info("vibrate sent device_id=%s strength=%s sound=%s", device_id, strength, sound_name)

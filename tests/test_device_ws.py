@@ -77,13 +77,19 @@ async def test_send_vibrate_payload_and_offline_drop(monkeypatch):
     monkeypatch.setattr(device_handler, "device_manager", manager)
 
     # 오프라인 → 드롭
-    assert await device_handler.send_vibrate(1, 70, "사이렌", "긴급") is False
+    assert await device_handler.send_vibrate(1, 70, "사이렌", "긴급", "LEFT") is False
 
     ws = FakeWebSocket()
     await manager.connect(1, ws)
-    assert await device_handler.send_vibrate(1, 70, "사이렌", "긴급") is True
+    assert await device_handler.send_vibrate(1, 70, "사이렌", "긴급", "LEFT") is True
     assert ws.sent == [
-        {"type": "vibrate", "strength": 70, "sound_name": "사이렌", "sound_category": "긴급"}
+        {
+            "type": "vibrate",
+            "strength": 70,
+            "sound_name": "사이렌",
+            "sound_category": "긴급",
+            "direction": "LEFT",
+        }
     ]
 
 
@@ -103,6 +109,7 @@ async def test_handle_detection_sends_vibrate_with_user_strength(monkeypatch):
         sound_name="사이렌",
         sound_category="긴급",
         detected_at=datetime.now(timezone.utc),
+        direction="FRONT",
     )
 
     async def get_active_sound_ids(*args, **kwargs):
@@ -134,5 +141,11 @@ async def test_handle_detection_sends_vibrate_with_user_strength(monkeypatch):
     )
 
     assert vibrate_calls == [
-        {"device_id": 5, "strength": 70, "sound_name": "사이렌", "sound_category": "긴급"}
+        {
+            "device_id": 5,
+            "strength": 70,
+            "sound_name": "사이렌",
+            "sound_category": "긴급",
+            "direction": "FRONT",
+        }
     ]

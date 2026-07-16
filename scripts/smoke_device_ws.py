@@ -124,12 +124,14 @@ def main() -> None:
                 # 감지 매칭 → 이 소켓으로 vibrate 명령이 와야 한다
                 r = client.post(f"/devices/{device_id}/detections", headers=auth("ai-server"), json={
                     "sound_category": "긴급", "sound_name": "사이렌", "confidence": 0.97,
+                    "direction": "LEFT",
                     "detected_at": datetime.now(timezone.utc).isoformat(),
                 })
                 assert r.status_code == 200, r.text
                 command = ws.receive_json()
                 assert command == {
                     "type": "vibrate", "strength": 70, "sound_name": "사이렌", "sound_category": "긴급",
+                    "direction": "LEFT",
                 }, command
                 log.append(("vibrate strength", command["strength"]))
 
