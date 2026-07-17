@@ -76,7 +76,7 @@ async def main() -> None:
             assert r.status_code == 200, r.text
             log.append(("GET /users/me nickname", r.json()["nickname"]))
 
-            r = await c.post("/devices", headers=auth(), json={"nickname": "내 목걸이", "mac_address": "AA:BB:CC:00:11:22"})
+            r = await c.post("/devices", headers=auth(), json={"nickname": "내 목걸이"})
             assert r.status_code == 200, r.text
             device_id = r.json()["id"]
             log.append(("POST /devices id", device_id))

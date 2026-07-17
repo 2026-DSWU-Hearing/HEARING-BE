@@ -18,6 +18,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.security import create_access_token
 from app.db.session import AsyncSessionLocal
 
@@ -47,15 +48,15 @@ async def ensure_dev_user(db) -> None:
 
 async def ensure_dev_device(db) -> None:
     """테스트용 디바이스 1개. AI서버/스크립트가 POST /devices/{id}/detections 를
-    별도 등록·페어링 절차 없이 고정 id로 바로 쏠 수 있게 시드한다(로그인 우회와 같은 취지)."""
+    별도 등록·페어링 절차 없이 고정 id로 바로 쏠 수 있게 시드한다(로그인 우회와 같은 취지).
+    MAC 은 실기기와 동일(공유 MAC) — is_connected 는 기기 WS 접속만이 켤 수 있으므로 시드하지 않는다."""
     if await db.get(Device, DEV_DEVICE_ID):
         return
     db.add(Device(
         id=DEV_DEVICE_ID,
         user_id=DEV_USER_ID,
         nickname="개발용 디바이스",
-        mac_address="DE:V0:00:00:00:01",
-        is_connected=True,
+        mac_address=settings.DEVICE_MAC_ADDRESS,
     ))
     await db.commit()
 

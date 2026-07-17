@@ -86,6 +86,15 @@ async def db() -> AsyncSession:
 
 
 @pytest_asyncio.fixture
+async def test_session_factory():
+    """테스트 DB 를 보는 세션 팩토리 — 요청 스코프 밖에서 자체 세션을 여는 코드
+    (기기 WS 핸들러의 AsyncSessionLocal 등)를 monkeypatch 로 바꿔치기할 때 쓴다."""
+    engine = create_async_engine(_TEST_URL)
+    yield async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
 async def test_redis(monkeypatch):
     """실 Redis, 테스트 전용 DB 15 — dev(/0)와 키공간 분리, 테스트 후 flush.
     get_redis() 싱글턴을 이 클라이언트로 바꿔치기한다(rate limit·블랙리스트가 여길 보게).

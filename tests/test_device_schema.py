@@ -13,29 +13,30 @@ from app.schemas.device import DetectionCreate, DeviceCreate, DeviceUpdate, norm
         (" aa:bb:cc:00:11:22 ", "AA:BB:CC:00:11:22"),
     ],
 )
-def test_device_create_normalizes_mac(raw, expected):
-    payload = DeviceCreate(nickname="내 목걸이", mac_address=raw)
-
-    assert payload.mac_address == expected
+def test_normalize_mac(raw, expected):
     assert normalize_mac(raw) == expected
 
 
-@pytest.mark.parametrize("battery_level", [0, 100])
-def test_device_update_accepts_battery_0_to_100(battery_level):
-    payload = DeviceUpdate(battery_level=battery_level)
+def test_device_create_is_nickname_only():
+    payload = DeviceCreate(nickname="내 목걸이")
 
-    assert payload.battery_level == battery_level
+    assert set(DeviceCreate.model_fields) == {"nickname"}
+    assert payload.model_dump() == {"nickname": "내 목걸이"}
 
 
-@pytest.mark.parametrize("battery_level", [-1, 101])
-def test_device_update_rejects_battery_out_of_range(battery_level):
-    with pytest.raises(ValidationError):
-        DeviceUpdate(battery_level=battery_level)
+def test_device_update_is_nickname_only():
+    # is_connected·battery_level 은 기기 WS 수명주기 전용 — 클라이언트 PATCH 로 쓸 수 없어야 한다
+    # (과거 FE 의 PATCH is_connected:true 가 만든 '유령 연결' 재발 방지)
+    assert set(DeviceUpdate.model_fields) == {"nickname"}
+
+    # 구버전 FE 가 보내던 필드는 검증 오류 없이 무시된다 (하위 호환)
+    payload = DeviceUpdate(nickname="새 이름", is_connected=True, battery_level=50)
+    assert payload.model_dump(exclude_none=True) == {"nickname": "새 이름"}
 
 
 def test_device_create_rejects_empty_nickname():
     with pytest.raises(ValidationError):
-        DeviceCreate(nickname="", mac_address="AA:BB:CC:00:11:22")
+        DeviceCreate(nickname="")
 
 
 @pytest.mark.parametrize("direction", ["FRONT", "BACK", "LEFT", "RIGHT", "UNKNOWN"])

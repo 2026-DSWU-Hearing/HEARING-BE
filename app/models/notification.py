@@ -13,7 +13,9 @@ class Notification(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)
+    # 알림(감지 기록)은 기기보다 오래 산다 — 기기 삭제 후 재등록이 정식 흐름이라
+    # CASCADE 면 히스토리가 통째로 날아간다. 게스트 데모 알림도 기기 없이(None) 시드된다.
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"), nullable=True)
     sound_id: Mapped[int | None] = mapped_column(ForeignKey("sounds.id"), nullable=True)
 
     sound_name: Mapped[str] = mapped_column(String(100), nullable=False)

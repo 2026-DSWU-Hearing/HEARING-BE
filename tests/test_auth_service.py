@@ -22,6 +22,12 @@ async def _count(db, model) -> int:
     return result.scalar_one()
 
 
+async def _assert_no_device(db, user_id: int) -> None:
+    """로그인만으로는 기기가 생성되지 않는다."""
+    devices = (await db.execute(select(Device).where(Device.user_id == user_id))).scalars().all()
+    assert devices == []
+
+
 def _fake_google(sub: str, email: str, name: str = "구글유저"):
     async def _verify(id_token: str) -> dict:
         return {"sub": sub, "email": email, "name": name}
@@ -39,17 +45,28 @@ async def test_google_login_creates_new_user(db, monkeypatch):
     assert user.email == "new@gmail.com"
     assert user.is_google_user is True
     assert user.terms_agreed is False  # 약관은 별도 동의로만 True
+    assert user.push_enabled is False
+    await _assert_no_device(db, user.id)
 
 
 @pytest.mark.asyncio
 async def test_google_login_reuses_existing_user(db, monkeypatch):
-    db.add(User(email="dup@gmail.com", nickname="기존", is_google_user=True, google_sub="g-123"))
+    db.add(User(
+        email="dup@gmail.com",
+        nickname="기존",
+        is_google_user=True,
+        google_sub="g-123",
+        push_enabled=True,
+    ))
     await db.commit()
     monkeypatch.setattr(auth_service, "verify_google_id_token", _fake_google("g-123", "dup@gmail.com"))
 
     await auth_service.google_login(db, GoogleLoginRequest(id_token="x"))
 
     assert await _count(db, User) == 1  # 새 유저를 만들지 않고 재사용
+    user = (await db.execute(select(User))).scalars().one()
+    assert user.push_enabled is True
+    await _assert_no_device(db, user.id)
 
 
 @pytest.mark.asyncio
@@ -61,9 +78,10 @@ async def test_guest_login_without_catalog_still_creates_user(db):
     assert user.nickname == "게스트"
     assert user.email.endswith("@demo.hearing.local")
     assert user.terms_agreed is True
-    # 카탈로그가 없으면 데모 데이터는 조용히 건너뛴다
-    assert await _count(db, Device) == 0
+    assert user.push_enabled is False
+    await _assert_no_device(db, user.id)
     assert await _count(db, Mode) == 0
+    assert await _count(db, Notification) == 0
 
 
 @pytest.mark.asyncio
@@ -77,7 +95,8 @@ async def test_guest_login_seeds_demo_data_when_catalog_present(db):
 
     await auth_service.guest_login(db)
 
-    assert await _count(db, Device) == 1
+    user = (await db.execute(select(User))).scalars().one()
+    await _assert_no_device(db, user.id)
     assert await _count(db, Mode) == len(auth_service._DEMO_MODES)
     assert await _count(db, Notification) == len(auth_service._DEMO_NOTIFICATIONS)
 

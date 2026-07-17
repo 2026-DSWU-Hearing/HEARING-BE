@@ -41,7 +41,7 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
         fcm_token="expired-token",
         haptic_strength=50,
     )
-    device = SimpleNamespace(id=1)
+    device = SimpleNamespace(id=1, mac_address="44:1B:F6:D4:47:F0")
     payload = DetectionCreate(
         sound_id=20,
         sound_name="test sound",
@@ -95,7 +95,7 @@ async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
         fcm_token="valid-token",
         haptic_strength=50,
     )
-    device = SimpleNamespace(id=1)
+    device = SimpleNamespace(id=1, mac_address="44:1B:F6:D4:47:F0")
     payload = DetectionCreate(
         sound_id=20,
         sound_name="test sound",

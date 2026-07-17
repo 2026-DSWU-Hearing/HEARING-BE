@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.exceptions import ConflictException
 from app.core.logger import logger
 from app.db.functions import get_or_404, get_owned_or_403
@@ -18,48 +19,69 @@ async def list_devices(db: AsyncSession, user_id: int) -> list[Device]:
 
 
 async def create_device(db: AsyncSession, user_id: int, payload: DeviceCreate) -> Device:
-    # 실기기 MAC 은 unique — 이미 등록돼 있으면(내 것이든 남의 것이든) 409.
-    # 기기 이전은 기존 소유자가 삭제 후 재등록하는 흐름.
-    existing = await db.execute(select(Device.id).where(Device.mac_address == payload.mac_address))
-    if existing.scalar_one_or_none() is not None:
-        raise ConflictException("이미 등록된 MAC 주소입니다")
+    # MAC은 서버 설정이 원천이다(Settings 가 정규화 보장). 여러 계정이 같은 물리 기기를
+    # 등록해 공유할 수 있으며, 같은 계정의 재등록은 멱등 — 입력한 이름만 반영하고 기존 행을 반환한다.
+    device_mac = settings.DEVICE_MAC_ADDRESS
+    existing = await _rename_existing_device(db, user_id, device_mac, payload.nickname)
+    if existing is not None:
+        return existing
 
-    device = Device(user_id=user_id, nickname=payload.nickname, mac_address=payload.mac_address)
+    device = Device(user_id=user_id, nickname=payload.nickname, mac_address=device_mac)
     db.add(device)
     try:
         await db.commit()
-    except IntegrityError as e:  # 동시 등록 레이스 — unique 제약이 최종 방어선
+    except IntegrityError as e:  # 동시 등록 레이스 — uq_devices_user_mac 이 잡아준 쪽을 다시 읽는다(멱등)
         await db.rollback()
-        raise ConflictException("이미 등록된 MAC 주소입니다") from e
+        existing = await _rename_existing_device(db, user_id, device_mac, payload.nickname)
+        if existing is None:  # unique 충돌인데 행이 없다 — 예상 밖(다른 제약 위반)
+            raise ConflictException("기기 등록에 실패했습니다") from e
+        return existing
     await db.refresh(device)
     return device
 
 
+async def _rename_existing_device(
+    db: AsyncSession, user_id: int, device_mac: str, nickname: str
+) -> Device | None:
+    """이 계정의 기존 기기 행이 있으면 등록 요청의 이름을 반영해 반환. 없으면 None.
+    다른 MAC 행(서버 MAC 변경 이전의 잔여)이면 계정당 1대 정책으로 409."""
+    result = await db.execute(select(Device).where(Device.user_id == user_id))
+    existing = result.scalars().first()
+    if existing is None:
+        return None
+    if existing.mac_address != device_mac:
+        raise ConflictException("기기는 계정당 한 대만 등록할 수 있습니다 (기존 기기 삭제 후 등록)")
+    if existing.nickname != nickname:  # 재등록 = "이 이름으로 쓰겠다" — 이름 무시하면 사용자 입력이 증발한다
+        existing.nickname = nickname
+        await db.commit()
+        await db.refresh(existing)
+    return existing
+
+
 async def update_device(db: AsyncSession, user_id: int, device_id: int, payload: DeviceUpdate) -> Device:
+    # is_connected·battery_level 은 기기 WS 수명주기 전용(스키마에서 제거) — PATCH 는 닉네임만.
     device = await _get_owned_device(db, user_id, device_id)
     if payload.nickname is not None:
         device.nickname = payload.nickname
-    if payload.battery_level is not None:
-        device.battery_level = payload.battery_level
-    if payload.is_connected is not None:
-        device.is_connected = payload.is_connected
     await db.commit()
     await db.refresh(device)
-
-    if payload.is_connected is False:
-        # FE '연결 해제' — DB 플래그만 바꾸면 기기 WS 가 살아있는 동안 가짜 상태가 되므로
-        # 서버측에서 WS 를 닫는다. (핸들러 finally 는 이미 빠진 연결이라 DB 를 다시 안 건드림)
-        from app.websocket.manager import device_manager
-
-        if await device_manager.close_device(device_id):
-            logger.info("device ws closed by disconnect request device_id=%s", device_id)
     return device
 
 
 async def delete_device(db: AsyncSession, user_id: int, device_id: int) -> None:
     device = await _get_owned_device(db, user_id, device_id)
+    mac = device.mac_address
     await db.delete(device)
     await db.commit()
+
+    # 이 MAC 을 등록한 계정이 하나도 안 남았을 때만 하드웨어 WS 를 닫는다
+    # (다른 계정이 공유 중이면 연결 유지 — 그들의 is_connected 상태를 깨지 않도록).
+    remaining = await db.execute(select(Device.id).where(Device.mac_address == mac).limit(1))
+    if remaining.scalar_one_or_none() is None:
+        from app.websocket.manager import device_manager
+
+        if await device_manager.close_device(mac):
+            logger.info("device ws closed (last registration removed) mac=%s", mac)
 
 
 async def handle_detection(

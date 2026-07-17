@@ -91,9 +91,9 @@ async def handle_detection(
     await detection_handler.broadcast_detection(user_id, notification)
 
     # 하드웨어 진동 명령 — do_not_disturb·모드 매칭은 위에서 이미 통과했다.
-    # 기기 WS 가 끊겨 있으면 드롭 (진동은 실시간 경보라 큐잉하지 않음).
+    # 기기 WS 가 끊겨 있으면 드롭 (진동은 실시간 경보라 큐잉하지 않음). 연결은 MAC 단위.
     await device_handler.send_vibrate(
-        device_id=device.id,
+        mac=device.mac_address,
         strength=user.haptic_strength,
         sound_name=notification.sound_name,
         sound_category=notification.sound_category,
