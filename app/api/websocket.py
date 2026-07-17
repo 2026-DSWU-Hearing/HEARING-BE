@@ -28,14 +28,15 @@ async def ws_detections(ws: WebSocket, token: str = Query(...)):
 
 @router.websocket("/ws/devices")
 async def ws_devices(ws: WebSocket, token: str = Query(...), mac: str = Query(...)):
-    """하드웨어(ESP32) 상태/명령 채널. token 은 정품 기기 증명, 기기 선택은 MAC."""
+    """하드웨어(ESP32) 상태/명령 채널. token 은 정품 기기 증명, 기기 식별은 MAC.
+    실물 기기는 여러 계정이 공유하므로 이 연결 하나가 그 MAC 의 모든 계정 상태를 갱신한다."""
     try:
         decode_access_token(token, DEVICE_WS_SOURCES)
     except AuthException:
         await _reject(ws, 4401)
         return
-    device_id = await device_handler.resolve_device_id(mac)
-    if device_id is None:
+    registered_mac = await device_handler.resolve_registered_mac(mac)
+    if registered_mac is None:
         await _reject(ws, 4404)  # 미등록 MAC
         return
-    await device_handler.handle_device_socket(ws, device_id)
+    await device_handler.handle_device_socket(ws, registered_mac)

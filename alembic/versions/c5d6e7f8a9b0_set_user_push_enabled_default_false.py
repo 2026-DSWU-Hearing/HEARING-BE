@@ -2,8 +2,10 @@ from alembic import op
 import sqlalchemy as sa
 
 
+# down_revision 주의: d0e1f2a3b4c5 로 두면 e1f2a3b4c5d6(seed)과 부모가 겹쳐
+# head 가 2개로 갈라진다(alembic upgrade head 실패). 체인 끝(b4c5d6e7f8a9)에 잇는다.
 revision = 'c5d6e7f8a9b0'
-down_revision = 'd0e1f2a3b4c5'
+down_revision = 'b4c5d6e7f8a9'
 
 
 def upgrade() -> None:

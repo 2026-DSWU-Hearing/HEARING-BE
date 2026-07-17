@@ -14,7 +14,6 @@ from app.core.security import (
     decode_token,
     verify_google_id_token,
 )
-from app.models.device import Device
 from app.models.mode import Mode, ModeSound
 from app.models.notification import Notification
 from app.models.sound import Sound
@@ -54,6 +53,7 @@ _DEMO_MODES: list[tuple[str, str, list[str], bool]] = [
     ("가정", "home", ["화재 경보", "노크 소리", "개"], False),
 ]
 # (소리이름, 카테고리) — 알림 화면이 비어 보이지 않게 최근 알림 몇 건 시드.
+# 기기는 사용자가 직접 등록하는 흐름이라 시드 시점엔 없다 → device_id=None (SET NULL 계약).
 _DEMO_NOTIFICATIONS: list[tuple[str, str]] = [
     ("사이렌", "긴급"),
     ("노크 소리", "생활음"),
@@ -74,21 +74,14 @@ async def guest_login(db: AsyncSession) -> TokenResponse:
 
 
 async def _seed_demo_data(db: AsyncSession, user_id: int) -> None:
-    """게스트에게 샘플 모드/디바이스/알림을 채워 화면이 비어 보이지 않게 한다.
+    """게스트에게 샘플 모드/알림을 채워 화면이 비어 보이지 않게 한다.
+    기기는 사용자가 직접 등록하므로 시드하지 않는다(알림은 device_id=None).
     소리 카탈로그가 아직 시드되지 않은 환경이면 조용히 건너뛴다(로그인 자체는 정상)."""
     wanted = {name for _, _, names, _ in _DEMO_MODES for name in names}
     rows = await db.execute(select(Sound.name, Sound.id).where(Sound.name.in_(wanted)))
     sound_id_by_name = {name: sid for name, sid in rows.all()}
     if not sound_id_by_name:
         return
-
-    device = Device(
-        user_id=user_id,
-        nickname="데모 디바이스",
-        mac_address=_random_mac(),
-        is_connected=True,
-    )
-    db.add(device)
 
     for name, icon, sound_names, is_active in _DEMO_MODES:
         sound_ids = [sound_id_by_name[n] for n in sound_names if n in sound_id_by_name]
@@ -99,14 +92,12 @@ async def _seed_demo_data(db: AsyncSession, user_id: int) -> None:
             mode.sound_links.append(ModeSound(sound_id=sid))
         db.add(mode)
 
-    await db.flush()  # device.id 확보
-
     now = datetime.now(timezone.utc)
     for i, (sound_name, category) in enumerate(_DEMO_NOTIFICATIONS, start=1):
         db.add(
             Notification(
                 user_id=user_id,
-                device_id=device.id,
+                device_id=None,
                 sound_id=sound_id_by_name.get(sound_name),
                 sound_name=sound_name,
                 sound_category=category,
@@ -117,11 +108,6 @@ async def _seed_demo_data(db: AsyncSession, user_id: int) -> None:
             )
         )
     await db.commit()
-
-
-def _random_mac() -> str:
-    h = uuid.uuid4().hex[:12]
-    return ":".join(h[i : i + 2] for i in range(0, 12, 2)).upper()
 
 
 async def refresh_tokens(refresh_token: str) -> TokenResponse:

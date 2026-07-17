@@ -34,7 +34,7 @@ async def _seed_user_and_sounds(session_factory, *, do_not_disturb: bool = False
 
 async def _make_active_mode_with_siren(client) -> int:
     """사이렌만 포함한 모드를 만들고 활성화한다. device_id 반환."""
-    r = await client.post("/devices", headers=_auth(), json={"nickname": "목걸이", "mac_address": "AA:BB:CC:00:11:22"})
+    r = await client.post("/devices", headers=_auth(), json={"nickname": "목걸이"})
     assert r.status_code == 200, r.text
     device_id = r.json()["id"]
 
@@ -87,3 +87,23 @@ async def test_do_not_disturb_suppresses_everything(api_client):
 
     r = await client.get("/notifications", headers=_auth())
     assert r.json() == []  # 방해금지면 매칭돼도 기록조차 남기지 않음
+
+
+@pytest.mark.asyncio
+async def test_device_delete_keeps_notification_history(api_client):
+    """기기 삭제(→재등록이 정식 흐름)가 알림 히스토리를 지우면 안 된다 — device_id 만 NULL 로 남는다."""
+    client, session_factory = api_client
+    await _seed_user_and_sounds(session_factory)
+    device_id = await _make_active_mode_with_siren(client)
+
+    r = await client.post(f"/devices/{device_id}/detections", headers=_auth("ai-server"), json=_detection("사이렌"))
+    assert r.status_code == 200, r.text
+
+    r = await client.delete(f"/devices/{device_id}", headers=_auth())
+    assert r.status_code == 200, r.text
+
+    r = await client.get("/notifications", headers=_auth())
+    notifs = r.json()
+    assert len(notifs) == 1  # 기기가 사라져도 감지 기록은 남는다
+    assert notifs[0]["sound_name"] == "사이렌"
+    assert notifs[0]["device_id"] is None

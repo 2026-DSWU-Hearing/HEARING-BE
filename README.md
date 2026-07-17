@@ -31,10 +31,16 @@ Detection flow (a.k.a. *flow A*):
    command (with the user's haptic strength) to the wearable over its WebSocket.
    No match: silently ignored — nothing is stored.
 
-Device connectivity is driven by the hardware WebSocket lifecycle: connecting marks the device
-`is_connected=true` (and updates `battery_level` from periodic status messages), disconnecting marks
-it `false`. The PWA reads this through plain `GET /devices` polling. WebSocket contracts are
-documented in [`docs/websocket.md`](docs/websocket.md).
+Device connectivity is driven **only** by the hardware WebSocket lifecycle: connecting marks the
+device `is_connected=true` (and updates `battery_level` from periodic status messages),
+disconnecting — or a server restart — marks it `false`. Clients cannot write these fields
+(`PATCH /devices/{id}` is nickname-only). There is a single physical wearable: the user registers
+it explicitly (`POST /devices` with just a nickname — the server assigns the shared MAC from
+config), multiple accounts may each register the same device, re-registering renames it
+idempotently, and one hardware connection updates every registered account. Deleting a device
+keeps its notification history (`device_id` is set to NULL). The PWA reads connection state
+through plain `GET /devices` polling. WebSocket contracts are documented in
+[`docs/websocket.md`](docs/websocket.md).
 
 ## Tech stack
 
