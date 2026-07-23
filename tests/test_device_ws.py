@@ -65,15 +65,17 @@ async def test_reconnect_replaces_old_connection():
 
 
 @pytest.mark.asyncio
-async def test_close_device_force_disconnects():
+async def test_is_connected_reflects_live_registry():
+    """[기기 연결] 버튼의 즉시 확인이 보는 값 — 접속/해제가 바로 반영돼야 한다."""
     manager = DeviceConnectionManager()
     ws = FakeWebSocket()
-    await manager.connect(MAC, ws)
+    assert manager.is_connected(MAC) is False
 
-    assert await manager.close_device(MAC) is True
-    assert ws.closed_code == 1000
-    assert manager.disconnect(MAC, ws) is False  # 이미 빠져 있음
-    assert await manager.close_device(MAC) is False  # 연결 없음
+    await manager.connect(MAC, ws)
+    assert manager.is_connected(MAC) is True
+
+    manager.disconnect(MAC, ws)
+    assert manager.is_connected(MAC) is False
 
 
 @pytest.mark.asyncio
@@ -156,53 +158,45 @@ async def test_handle_detection_sends_vibrate_with_user_strength(monkeypatch):
     ]
 
 
-# --- 공유 MAC: 실물 기기 1대 ↔ 여러 계정 -------------------------------------
+# --- 물리 기기 1행: WS 수명주기 → 그 행의 상태 갱신 ---------------------------
 
 
-async def _seed_two_users_sharing_mac(db) -> None:
-    db.add_all([
-        User(id=1, email="a@t.local", nickname="a", terms_agreed=True),
-        User(id=2, email="b@t.local", nickname="b", terms_agreed=True),
-    ])
+async def _seed_physical_device(db) -> None:
+    db.add(User(id=1, email="a@t.local", nickname="a", terms_agreed=True))
     await db.flush()
-    db.add_all([
-        Device(user_id=1, nickname="히어링 디바이스", mac_address=MAC),
-        Device(user_id=2, nickname="히어링 디바이스", mac_address=MAC),
-    ])
+    db.add(Device(id=1, mac_address=MAC))
     await db.commit()
 
 
 @pytest.mark.asyncio
-async def test_ws_lifecycle_updates_every_account_sharing_mac(db, test_session_factory, monkeypatch):
-    """하드웨어 WS 접속/해제는 그 MAC 을 등록한 모든 계정의 is_connected 를 함께 갱신한다."""
-    await _seed_two_users_sharing_mac(db)
+async def test_ws_lifecycle_updates_physical_device_row(db, test_session_factory, monkeypatch):
+    """하드웨어 WS 접속/해제가 물리 기기 행의 is_connected 를 갱신한다."""
+    await _seed_physical_device(db)
     monkeypatch.setattr(device_handler, "AsyncSessionLocal", test_session_factory)
 
-    # 소문자 MAC 접속도 정규화돼 등록된 기기로 해석된다
+    # 소문자 MAC 접속도 정규화돼 우리 기기로 해석된다
     assert await device_handler.resolve_registered_mac(MAC.lower()) == MAC
     assert await device_handler.resolve_registered_mac("FF:FF:FF:FF:FF:FF") is None
 
     await device_handler._set_connected(MAC, True)
     rows = (await db.execute(select(Device.is_connected))).scalars().all()
-    assert rows == [True, True]
+    assert rows == [True]
 
     await device_handler._set_connected(MAC, False)
     rows = (await db.execute(select(Device))).scalars().all()
-    assert [d.is_connected for d in rows] == [False, False]
+    assert [d.is_connected for d in rows] == [False]
     assert all(d.last_seen_at is not None for d in rows)
 
 
 @pytest.mark.asyncio
 async def test_startup_reset_clears_stale_connections(db, test_session_factory, monkeypatch):
-    """서버 기동 시 리셋 — 크래시·과거 데이터로 남은 is_connected=true 를 모두 끈다."""
-    await _seed_two_users_sharing_mac(db)
-    await db.execute(
-        Device.__table__.update().where(Device.user_id == 1).values(is_connected=True)
-    )
+    """서버 기동 시 리셋 — 크래시·과거 데이터로 남은 is_connected=true 를 끈다."""
+    await _seed_physical_device(db)
+    await db.execute(Device.__table__.update().values(is_connected=True))
     await db.commit()
     monkeypatch.setattr(device_handler, "AsyncSessionLocal", test_session_factory)
 
     await device_handler.reset_all_connections()
 
     rows = (await db.execute(select(Device.is_connected))).scalars().all()
-    assert rows == [False, False]
+    assert rows == [False]

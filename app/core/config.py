@@ -20,14 +20,14 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
 
-    # 실물 웨어러블 기기의 MAC. 수동 등록 시 서버가 이 값을 저장하며, 여러 계정이
-    # 같은 물리 기기를 등록해 공유할 수 있다. 기기가 바뀌면 여기(.env)만 바꾸면 된다.
+    # 실물 웨어러블 기기의 MAC — 물리 기기 행(1개)의 원천값. 기동/devinit 의
+    # ensure_physical_device 가 이 값으로 행을 만들거나(기기 교체 시) MAC 을 갱신한다.
     DEVICE_MAC_ADDRESS: str = "44:1B:F6:D4:47:F0"
 
     @field_validator("DEVICE_MAC_ADDRESS")
     @classmethod
     def _normalize_device_mac(cls, v: str) -> str:
-        # 저장(등록·devinit)과 WS 조회가 전부 정규화된 값 기준이므로 원천에서 한 번에 맞춘다
+        # 저장(ensure)과 WS 조회가 전부 정규화된 값 기준이므로 원천에서 한 번에 맞춘다
         # (.env 에 소문자/공백으로 넣어도 기기 상태 갱신이 어긋나지 않도록).
         from app.schemas.device import normalize_mac
 

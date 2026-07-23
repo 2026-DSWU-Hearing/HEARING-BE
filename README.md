@@ -24,22 +24,25 @@ flowchart LR
 
 Detection flow (a.k.a. *flow A*):
 
-1. AI server posts a classified sound `(category, name, confidence)` for a device.
-2. Backend resolves the sound by its Korean `(category, name)` pair, then checks the owning user's
-   **active mode** and the per-sound on/off toggles. Do-not-disturb suppresses everything.
+1. AI server posts a classified sound `(category, name, confidence)` for the device.
+2. Backend routes the detection to the device's current **active user** (the last account that
+   pressed *connect* — nobody means the detection is dropped), resolves the sound by its Korean
+   `(category, name)` pair, then checks that user's **active mode** and per-sound on/off toggles.
+   Do-not-disturb suppresses everything.
 3. On match: save `Notification` → FCM data-only push → in-app WebSocket broadcast → `vibrate`
    command (with the user's haptic strength) to the wearable over its WebSocket.
    No match: silently ignored — nothing is stored.
 
-Device connectivity is driven **only** by the hardware WebSocket lifecycle: connecting marks the
-device `is_connected=true` (and updates `battery_level` from periodic status messages),
-disconnecting — or a server restart — marks it `false`. Clients cannot write these fields
-(`PATCH /devices/{id}` is nickname-only). There is a single physical wearable: the user registers
-it explicitly (`POST /devices` with just a nickname — the server assigns the shared MAC from
-config), multiple accounts may each register the same device, re-registering renames it
-idempotently, and one hardware connection updates every registered account. Deleting a device
-keeps its notification history (`device_id` is set to NULL). The PWA reads connection state
-through plain `GET /devices` polling. WebSocket contracts are documented in
+There is exactly **one physical wearable, so exactly one device row** (MAC from config).
+Connectivity is driven **only** by the hardware WebSocket lifecycle: connecting marks that row
+`is_connected=true` (and updates `battery_level` from periodic status messages), disconnecting —
+or a server restart — marks it `false`; clients cannot write these fields. Who receives alerts is
+the row's **active user**: `POST /devices/connect` verifies the hardware is online *right now*
+(immediate 409 otherwise — no client-side polling wait) and switches the active user to the
+caller, taking over from whoever had it. The device's display name is stored **per account**
+(`PATCH /devices/{id}` renames only your view), and `DELETE /devices/{id}` merely releases your
+pointer — the hardware socket stays up and notification history always survives. The PWA reads
+connection state through plain `GET /devices` polling. WebSocket contracts are documented in
 [`docs/websocket.md`](docs/websocket.md).
 
 ## Tech stack
@@ -85,8 +88,8 @@ Run everything from the repo root with the venv active.
 | `python scripts/make_device_token.py` | Print the long-lived hardware token for `WS /ws/devices`. |
 
 **What `python -m app.devinit` does** (Postgres must be up): runs `alembic upgrade head`, seeds a dev
-user (`id=1`, `dev@hearing.local`) and a test device (`id=1`) so the AI server / scripts can POST
-detections without a registration step, fixes the Postgres id sequences, and prints ready-to-use
+user (`id=1`, `dev@hearing.local`) and the single physical device row (`id=1` — the AI server posts
+detections with `DEVICE_ID=1`), fixes the Postgres id sequences, and prints ready-to-use
 `user` and `ai-server` bearer tokens.
 
 **Tests vs. smokes.** `pytest` runs against **real PostgreSQL** — it creates a throwaway `hearing_test`
@@ -125,10 +128,17 @@ of how the schema evolved. A few **add-then-drop pairs** are intentional scope c
 | 6 | `d0e1f2a3b4c5` | add `users.push_enabled` |
 | 7 | `e1f2a3b4c5d6` | seed the sound catalog (8 categories, 67 sounds) |
 | 8 | `f2a3b4c5d6e7` | drop `users.password_hash` — email/password login removed (Google + guest only) |
+| 9 | `a3b4c5d6e7f8` | devices: drop the global MAC unique — one physical device shared by every account |
+| 10 | `b4c5d6e7f8a9` | notifications.device_id → nullable + ON DELETE SET NULL — history outlives devices |
+| 11 | `c5d6e7f8a9b0` | `users.push_enabled` defaults to false for new users |
+| 12 | `d6e7f8a9b0c1` | devices → **single physical row** + `active_user_id`; per-account device name moves to `users.device_nickname` |
 
 Steps **3→4** are the clearest case: an English category key was introduced for the API, then
 abandoned when the FE committed to Korean labels. `risk_level` (5) and `password_hash` (8) were
-likewise dropped as those features left scope. Revision IDs are hash-style by convention.
+likewise dropped as those features left scope. Steps **9→12** record the device model converging:
+per-account rows sharing one MAC (9) turned out to replicate connection state N times, so the
+schema settled on a single physical row with one active user (12). Revision IDs are hash-style by
+convention.
 
 ## API surface
 
@@ -140,7 +150,7 @@ All REST routes are unprefixed; see `/docs` for full request/response schemas.
 | Users | `GET/PATCH /users/me` + `haptic`, `do-not-disturb`, `push-enabled`, `fcm-token`, `agreement` | per-user alert preferences |
 | Modes | `GET/POST/PUT/DELETE /modes`, `PATCH /modes/{id}/activate`, `PUT /modes/{id}/sounds`, `PATCH /modes/{id}/sounds/{sid}` | sound-filter presets (max 6, one active); per-sound on/off |
 | Sounds | `GET /sounds`, `GET /sounds/categories` | fixed catalog; Korean labels are part of the FE contract |
-| Devices | `GET/POST/PATCH/DELETE /devices`, `POST /devices/{id}/detections` | detections endpoint is called by the AI server / wearable |
+| Devices | `GET /devices`, `POST /devices/connect`, `PATCH/DELETE /devices/{id}`, `POST /devices/{id}/detections` | connect = instant hardware check + active-user switch; detections endpoint is called by the AI server / wearable |
 | Notifications | `GET /notifications`, `PATCH /{id}/read`, `DELETE /{id}` | detection history |
 | WebSocket | `WS /ws/users/me/detections`, `WS /ws/devices` | in-app alerts / hardware channel — see [`docs/websocket.md`](docs/websocket.md) |
 

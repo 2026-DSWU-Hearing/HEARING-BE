@@ -1,7 +1,8 @@
 """흐름 A 엔드투엔드 스모크 테스트 (PostgreSQL 불필요 — 인메모리 SQLite).
 
 검증 경로:
-  유저 조회 → 디바이스 등록 → 모드 생성/활성화 → 감지 POST(매칭/비매칭) → 알림 필터링.
+  유저 조회 → 모드 생성/활성화 → 감지 POST(매칭/비매칭) → 알림 필터링.
+  (물리 기기 행 1개를 active_user=1 로 시드 — 감지는 그 현재 사용자에게 라우팅된다)
 
 핵심 단언:
   - POST /modes 응답의 sounds 가 실제 Sound 목록으로 직렬화된다(ModeResponse 버그 회귀 방지).
@@ -24,13 +25,16 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.dependencies import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import device, mode, notification, sound, user  # noqa: F401,E402  (메타데이터 등록)
+from app.models.device import Device  # noqa: E402
 from app.models.sound import Sound, SoundCategory  # noqa: E402
 from app.models.user import User  # noqa: E402
+from app.services.device_service import THE_DEVICE_ID  # noqa: E402
 
 # StaticPool + 단일 연결이라야 인메모리 DB가 모든 세션에서 공유된다.
 engine = create_async_engine(
@@ -56,6 +60,8 @@ async def seed() -> None:
             Sound(id=2, name="초인종", category_id=1),
             Sound(id=3, name="사이렌", category_id=1),
         ])
+        # 물리 기기 행(1개) — user1 이 [기기 연결]을 마친 상태로 시드
+        db.add(Device(id=THE_DEVICE_ID, mac_address=settings.DEVICE_MAC_ADDRESS, active_user_id=1))
         await db.commit()
 
 
@@ -76,10 +82,11 @@ async def main() -> None:
             assert r.status_code == 200, r.text
             log.append(("GET /users/me nickname", r.json()["nickname"]))
 
-            r = await c.post("/devices", headers=auth(), json={"nickname": "내 목걸이"})
+            r = await c.get("/devices", headers=auth())
             assert r.status_code == 200, r.text
-            device_id = r.json()["id"]
-            log.append(("POST /devices id", device_id))
+            device_id = r.json()[0]["id"]
+            assert device_id == THE_DEVICE_ID and r.json()[0]["is_active_user"] is True, r.text
+            log.append(("GET /devices id (active user)", device_id))
 
             r = await c.post(
                 "/modes",

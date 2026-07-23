@@ -7,11 +7,20 @@ from app.core.handlers import register_exception_handlers
 from app.core.logger import logger
 from app.core.middleware import setup_middleware
 from app.api import auth, users, modes, sounds, devices, notifications, websocket
+from app.db.session import AsyncSessionLocal
+from app.services.device_service import ensure_physical_device
 from app.websocket.device_handler import reset_all_connections
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 물리 기기 행(1개)을 보장한다 — [기기 연결]·GET /devices·감지 라우팅의 전제.
+    # DB 미기동 등으로 실패해도 기동은 계속한다(조회 경로의 ensure 가 자가 치유).
+    try:
+        async with AsyncSessionLocal() as db:
+            await ensure_physical_device(db)
+    except Exception as e:
+        logger.warning("startup physical device ensure skipped: %s", e)
     # WS 는 서버 재시작을 살아남지 못하므로 부팅 직후엔 연결된 기기가 없는 게 진실 —
     # 크래시·과거 데이터로 남은 is_connected=true 를 리셋한다(기기 상태의 진실 원천은 WS 수명주기).
     await reset_all_connections()

@@ -4,8 +4,8 @@
   접속 → is_connected=True, 해제 → False (+ last_seen_at 갱신)
   {"type": "status"} 수신 → battery_level·last_seen_at 갱신
   (connection_type 은 FE 미표시라 로그만 남긴다)
-실물 기기는 한 대를 여러 계정이 공유하므로 연결·상태 갱신은 전부 MAC 단위다
-— 하드웨어가 붙으면 그 MAC 을 등록한 모든 계정의 기기 행이 함께 갱신된다.
+물리 기기 행은 1개뿐이라(단일 행 모델) 갱신은 MAC 으로 그 행을 찾는다.
+[기기 연결] 버튼의 즉시 확인은 device_manager.is_connected 가 담당한다.
 진동 명령(send_vibrate)은 notification_service 가 매칭 성공 시 호출한다.
 """
 
@@ -23,8 +23,8 @@ from app.websocket.manager import device_manager
 
 
 async def resolve_registered_mac(mac: str) -> str | None:
-    """접속 MAC → 등록된 정규화 MAC. 어느 계정에도 등록돼 있지 않으면 None (호출측이 4404 로 닫는다).
-    등록 시점(DeviceCreate)과 동일하게 정규화 — 하드웨어가 소문자로 보내도 매칭된다."""
+    """접속 MAC → 물리 기기 행의 정규화 MAC. 우리 기기의 MAC 이 아니면 None (호출측이 4404 로 닫는다).
+    서버 설정(Settings validator)과 동일하게 정규화 — 하드웨어가 소문자로 보내도 매칭된다."""
     normalized = normalize_mac(mac)
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Device.id).where(Device.mac_address == normalized).limit(1))
@@ -49,7 +49,7 @@ async def handle_device_socket(ws: WebSocket, mac: str) -> None:
     except Exception as e:
         logger.error("device ws error mac=%s: %s", mac, e)
     finally:
-        # 재연결로 교체됐거나 close_device()로 이미 빠진 연결이면 DB를 건드리지 않는다
+        # 재연결로 교체돼 이미 빠진 연결이면 DB를 건드리지 않는다
         # (새 연결이 True 로 만든 상태를 덮어쓰지 않도록).
         if device_manager.disconnect(mac, ws):
             await _set_connected(mac, False)
