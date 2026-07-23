@@ -49,11 +49,16 @@ class DeviceConnectionManager:
 
     def disconnect(self, mac: str, ws: WebSocket) -> bool:
         """이 ws가 현재 활성 연결일 때만 제거하고 True.
-        교체·강제종료로 이미 빠진 연결이면 False — 호출측이 DB 상태를 덮어쓰지 않도록."""
+        교체로 이미 빠진 연결이면 False — 호출측이 DB 상태를 덮어쓰지 않도록."""
         if self._connections.get(mac) is ws:
             self._connections.pop(mac, None)
             return True
         return False
+
+    def is_connected(self, mac: str) -> bool:
+        """[기기 연결] 버튼의 즉시 확인용 — 지금 이 MAC 의 하드웨어가 붙어 있는가.
+        (DB is_connected 도 WS 수명주기가 같이 갱신하지만, 런타임 진실은 이 레지스트리다)"""
+        return mac in self._connections
 
     async def send_to_device(self, mac: str, message: dict) -> bool:
         ws = self._connections.get(mac)
@@ -65,17 +70,6 @@ class DeviceConnectionManager:
         except Exception:
             self.disconnect(mac, ws)
             return False
-
-    async def close_device(self, mac: str) -> bool:
-        """서버측 강제 종료 (해당 MAC 의 마지막 등록이 삭제됐을 때). 살아있는 연결이 있었으면 True."""
-        ws = self._connections.pop(mac, None)
-        if ws is None:
-            return False
-        try:
-            await ws.close(code=1000)
-        except Exception:
-            pass
-        return True
 
 
 manager = ConnectionManager()

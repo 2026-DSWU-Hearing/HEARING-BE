@@ -1,14 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.device import DetectionCreate, DeviceCreate, DeviceUpdate, normalize_mac
+from app.schemas.device import DetectionCreate, DeviceConnectRequest, DeviceUpdate, normalize_mac
 
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
         ("AA:BB:CC:00:11:22", "AA:BB:CC:00:11:22"),
-        # 하드웨어/FE 가 소문자·공백 섞어 보내도 저장·조회 양쪽에서 같은 값이 되도록
+        # 하드웨어/.env 가 소문자·공백 섞어 보내도 저장·조회 양쪽에서 같은 값이 되도록
         ("aa:bb:cc:00:11:22", "AA:BB:CC:00:11:22"),
         (" aa:bb:cc:00:11:22 ", "AA:BB:CC:00:11:22"),
     ],
@@ -17,11 +17,16 @@ def test_normalize_mac(raw, expected):
     assert normalize_mac(raw) == expected
 
 
-def test_device_create_is_nickname_only():
-    payload = DeviceCreate(nickname="내 목걸이")
+def test_connect_request_nickname_is_optional():
+    # 설정의 [이 계정으로 전환]은 body 없이(=이름 없이) 호출한다 — 기존 이름 유지
+    assert set(DeviceConnectRequest.model_fields) == {"nickname"}
+    assert DeviceConnectRequest().nickname is None
+    assert DeviceConnectRequest(nickname="내 목걸이").nickname == "내 목걸이"
 
-    assert set(DeviceCreate.model_fields) == {"nickname"}
-    assert payload.model_dump() == {"nickname": "내 목걸이"}
+
+def test_connect_request_rejects_empty_nickname():
+    with pytest.raises(ValidationError):
+        DeviceConnectRequest(nickname="")
 
 
 def test_device_update_is_nickname_only():
@@ -32,11 +37,6 @@ def test_device_update_is_nickname_only():
     # 구버전 FE 가 보내던 필드는 검증 오류 없이 무시된다 (하위 호환)
     payload = DeviceUpdate(nickname="새 이름", is_connected=True, battery_level=50)
     assert payload.model_dump(exclude_none=True) == {"nickname": "새 이름"}
-
-
-def test_device_create_rejects_empty_nickname():
-    with pytest.raises(ValidationError):
-        DeviceCreate(nickname="")
 
 
 @pytest.mark.parametrize("direction", ["FRONT", "BACK", "LEFT", "RIGHT", "UNKNOWN"])
