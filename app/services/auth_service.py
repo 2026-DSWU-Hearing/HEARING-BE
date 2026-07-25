@@ -37,25 +37,36 @@ async def google_login(db: AsyncSession, payload: GoogleLoginRequest) -> TokenRe
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        # 신규 계정에만 기본 모드(가정/긴급/외출)를 시드한다 — 활성 모드가 있어야 감지 흐름이
+        # 동작하므로 첫 로그인부터 바로 쓸 수 있게. 데모 알림(_seed_demo_notifications)은
+        # 게스트 전용이라 실계정엔 넣지 않는다(가짜 감지 기록 방지). 재로그인 시엔 이 분기를
+        # 타지 않으므로 중복 시드도 없다.
+        await _seed_default_modes(db, user.id)
     return _issue_tokens(user.id)
 
 
-# --- 게스트(데모) 로그인 -------------------------------------------------------
-# 포트폴리오 데모용: 방문자(리뷰어)가 구글 계정 연동 없이 원클릭으로 둘러볼 수 있게 한다.
-# 매 호출마다 독립 게스트 유저 + 샘플 데이터를 만들어 리뷰어끼리 데이터가 섞이지 않는다.
+# --- 신규 가입 기본 시드 --------------------------------------------------------
+# 새 계정(게스트 + 구글 첫 로그인)에 기본 모드를 깔아 첫 화면이 비지 않게 하고, 활성 모드가
+# 있어야 감지 흐름이 동작하므로 최소 1개를 활성으로 둔다. 모드 시드는 두 로그인이 공유한다.
+# 게스트는 추가로 데모용 가짜 알림까지 채운다(리뷰어가 알림 화면을 바로 보게) — 실계정엔 안 넣음.
 # 게스트는 email 도메인(@demo.hearing.local)으로 식별 → 추후 일괄 정리 가능.
 
 _GUEST_EMAIL_DOMAIN = "demo.hearing.local"
 
 # (모드명, 아이콘, [소리이름], 활성여부) — 소리는 이름으로 조회(시드 순서와 무관하게).
-_DEMO_MODES: list[tuple[str, str, list[str], bool]] = [
-    ("외출", "walk", ["사이렌", "경적", "자동차 경고음"], True),
-    ("가정", "home", ["화재 경보", "노크 소리", "개"], False),
+# 아이콘은 반드시 mode_icons.py 의 icon_key(ic_*) 값. FE 아이콘 매핑이 ic_* 만 인식하므로
+# 'home' 처럼 접두사 없는 값을 넣으면 UnknownModeIcon 으로 떨어져 아이콘이 안 뜬다.
+# 소리 이름도 카탈로그(Sound.name)와 정확히 일치해야 함('노크'가 아니라 '노크 소리').
+_DEFAULT_MODES: list[tuple[str, str, list[str], bool]] = [
+    ("가정", "ic_home", ["가전제품"], True),
+    ("긴급", "ic_emergency", ["경적"], False),
+    ("외출", "ic_goingOut", ["노크 소리"], False),
 ]
-# (소리이름, 카테고리) — 알림 화면이 비어 보이지 않게 최근 알림 몇 건 시드.
+# (소리이름, 카테고리) — 게스트 전용 데모 알림. 알림 화면이 비어 보이지 않게 최근 몇 건 시드.
+# 실사용자(구글) 계정엔 넣지 않는다: 실제로 발생하지 않은 감지 기록은 오해를 준다.
 # 기기는 사용자가 직접 등록하는 흐름이라 시드 시점엔 없다 → device_id=None (SET NULL 계약).
 _DEMO_NOTIFICATIONS: list[tuple[str, str]] = [
-    ("사이렌", "긴급"),
+    ("경적", "교통"),
     ("노크 소리", "생활음"),
 ]
 
@@ -69,21 +80,22 @@ async def guest_login(db: AsyncSession) -> TokenResponse:
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    await _seed_demo_data(db, user.id)
+    await _seed_default_modes(db, user.id)
+    await _seed_demo_notifications(db, user.id)
     return _issue_tokens(user.id)
 
 
-async def _seed_demo_data(db: AsyncSession, user_id: int) -> None:
-    """게스트에게 샘플 모드/알림을 채워 화면이 비어 보이지 않게 한다.
-    기기는 사용자가 직접 등록하므로 시드하지 않는다(알림은 device_id=None).
+async def _seed_default_modes(db: AsyncSession, user_id: int) -> None:
+    """새 계정에 기본 모드(가정/긴급/외출)를 만든다. 게스트/구글 첫 로그인이 공유한다.
+    활성 모드가 있어야 감지 흐름이 동작하므로 최소 1개를 활성으로 둔다.
     소리 카탈로그가 아직 시드되지 않은 환경이면 조용히 건너뛴다(로그인 자체는 정상)."""
-    wanted = {name for _, _, names, _ in _DEMO_MODES for name in names}
+    wanted = {name for _, _, names, _ in _DEFAULT_MODES for name in names}
     rows = await db.execute(select(Sound.name, Sound.id).where(Sound.name.in_(wanted)))
     sound_id_by_name = {name: sid for name, sid in rows.all()}
     if not sound_id_by_name:
         return
 
-    for name, icon, sound_names, is_active in _DEMO_MODES:
+    for name, icon, sound_names, is_active in _DEFAULT_MODES:
         sound_ids = [sound_id_by_name[n] for n in sound_names if n in sound_id_by_name]
         if not sound_ids:
             continue
@@ -91,6 +103,16 @@ async def _seed_demo_data(db: AsyncSession, user_id: int) -> None:
         for sid in sound_ids:
             mode.sound_links.append(ModeSound(sound_id=sid))
         db.add(mode)
+    await db.commit()
+
+
+async def _seed_demo_notifications(db: AsyncSession, user_id: int) -> None:
+    """게스트 전용: 알림 화면이 비어 보이지 않게 최근 알림 몇 건을 시드한다.
+    실사용자(구글) 계정엔 호출하지 않는다(가짜 감지 기록 방지).
+    소리 카탈로그가 없으면 sound_id 는 None 으로 남지만 알림 자체는 표시된다."""
+    names = [name for name, _ in _DEMO_NOTIFICATIONS]
+    rows = await db.execute(select(Sound.name, Sound.id).where(Sound.name.in_(names)))
+    sound_id_by_name = {name: sid for name, sid in rows.all()}
 
     now = datetime.now(timezone.utc)
     for i, (sound_name, category) in enumerate(_DEMO_NOTIFICATIONS, start=1):

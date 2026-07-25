@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.core.exceptions import AuthException
+from app.core.logger import logger
 
 USER_ACCESS_SOURCES = frozenset({"user"})
 DETECTION_ACCESS_SOURCES = frozenset({"device", "ai-server"})
@@ -91,11 +92,17 @@ async def verify_google_id_token(id_token: str) -> dict[str, Any]:
             id_token,
             google_requests.Request(),
             settings.GOOGLE_CLIENT_ID or None,
+            # 기본값 0 이면 서버 시계가 구글보다 몇 초만 빨라도 "Token used too early" 로
+            # 거절된다(로컬 개발의 최다 원인). 구글 권장대로 약간의 허용 오차를 둔다.
+            clock_skew_in_seconds=10,
         )
 
     try:
         info = await asyncio.to_thread(_verify)
     except ValueError as e:  # 서명·aud·iss·만료 불일치
+        # 원인별로(만료/시계오차/aud/서명) 메시지가 달라 진단에 필수인데, 삼키면 추적 불가.
+        # 토큰 원문은 남기지 않고 실패 사유(str(e))만 기록한다.
+        logger.warning("Google ID token verification failed: %s", e)
         raise AuthException("Invalid Google ID token") from e
 
     if not info.get("email"):
