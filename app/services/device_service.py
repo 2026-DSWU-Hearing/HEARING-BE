@@ -19,7 +19,7 @@ from app.models.user import User
 from app.schemas.device import DetectionCreate, DeviceResponse, DeviceUpdate
 
 THE_DEVICE_ID = 1  # 물리 기기 행의 고정 id — AI 서버 .env 의 DEVICE_ID 가 이 값으로 감지를 쏜다
-DEFAULT_DEVICE_NICKNAME = "Hear:ing NeckBand"  # 계정이 아직 이름을 안 지었을 때의 표시명
+DEFAULT_DEVICE_NICKNAME = "My NeckBand"  # 계정이 아직 이름을 안 지었을 때의 표시명
 
 
 async def ensure_physical_device(db: AsyncSession) -> Device:
