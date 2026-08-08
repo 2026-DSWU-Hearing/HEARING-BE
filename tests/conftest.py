@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -18,9 +19,18 @@ from app.models import device, mode, notification, sound, user  # noqa: F401  (�
 # (타입·제약·시퀀스·flush 동작이 운영과 동일해야 헛된 통과를 막는다).
 # 운영/개발 DB(`hearing`)를 건드리지 않도록 전용 테스트 DB 를 만들고 끝나면 삭제한다.
 TEST_DB_NAME = "hearing_test"
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _ADMIN_URL = make_url(settings.DATABASE_URL).set(database="postgres")
 _TEST_URL = make_url(settings.DATABASE_URL).set(database=TEST_DB_NAME)
-_ALL_TABLES = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+
+# 소리 카탈로그(카테고리 8 + 소리 67)는 마이그레이션이 깔아주는 **레퍼런스 데이터**다.
+# 운영에는 항상 존재하므로 테스트에서도 전 구간 상주시킨다 — 테스트별 격리(TRUNCATE)
+# 대상에서 빼는 이유. 테스트가 소리를 직접 만들어 쓰면 이름이 코드와 자동으로 맞아떨어져
+# '카탈로그에 없는 이름' 류의 버그를 영영 못 잡는다(실제로 그래서 놓친 적 있음).
+_CATALOG_TABLES = {"sound_categories", "sounds"}
+_ALL_TABLES = ", ".join(
+    f'"{t.name}"' for t in Base.metadata.sorted_tables if t.name not in _CATALOG_TABLES
+)
 
 
 @pytest_asyncio.fixture
@@ -47,10 +57,26 @@ async def _setup_test_db() -> None:
         await conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
     await admin.dispose()
 
-    engine = create_async_engine(_TEST_URL)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
+
+def _upgrade_test_db_to_head() -> None:
+    """테스트 DB 스키마를 `alembic upgrade head` 로 만든다.
+
+    metadata.create_all 이 아니라 마이그레이션을 태우는 이유:
+      - 소리 카탈로그 시드가 마이그레이션에 들어 있어 이걸 돌려야 운영과 같은 상태가 된다
+      - 스키마 자체도 마이그레이션 결과와 모델 정의가 어긋나면 여기서 드러난다
+    alembic env.py 가 settings.DATABASE_URL 을 읽으므로 그동안만 테스트 DB 로 바꿔둔다.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    original = settings.DATABASE_URL
+    settings.DATABASE_URL = _TEST_URL.render_as_string(hide_password=False)
+    try:
+        cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))
+        cfg.set_main_option("script_location", str(_PROJECT_ROOT / "alembic"))
+        command.upgrade(cfg, "head")
+    finally:
+        settings.DATABASE_URL = original
 
 
 async def _teardown_test_db() -> None:
@@ -62,10 +88,13 @@ async def _teardown_test_db() -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_database():
-    """세션 1회: 전용 PostgreSQL 테스트 DB 생성(+스키마), 종료 시 삭제.
-    sync fixture + asyncio.run 으로 자체 루프에서 실행 — 함수 스코프 테스트 루프와 섞이지 않게 한다."""
+    """세션 1회: 전용 PostgreSQL 테스트 DB 생성(+마이그레이션), 종료 시 삭제.
+    sync fixture + asyncio.run 으로 자체 루프에서 실행 — 함수 스코프 테스트 루프와 섞이지 않게 한다.
+    _upgrade_test_db_to_head 는 alembic env.py 가 자체 asyncio.run 을 돌리므로
+    반드시 asyncio.run **밖**(동기 구간)에서 호출해야 한다."""
     try:
         asyncio.run(_setup_test_db())
+        _upgrade_test_db_to_head()
     except Exception as exc:  # Postgres 미기동 등 — 원인을 분명히 보여준다
         pytest.skip(f"PostgreSQL 테스트 DB 준비 실패 (docker compose up -d postgres 필요?): {exc}")
     yield

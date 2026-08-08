@@ -11,7 +11,6 @@ from app.core.security import create_access_token, create_refresh_token, decode_
 from app.models.device import Device
 from app.models.mode import Mode
 from app.models.notification import Notification
-from app.models.sound import Sound, SoundCategory
 from app.models.user import User
 from app.schemas.auth import GoogleLoginRequest
 from app.services import auth_service
@@ -72,7 +71,12 @@ async def test_google_login_reuses_existing_user(db, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_guest_login_without_catalog_still_creates_user(db):
+async def test_guest_login_creates_user_and_seeds_demo_data(db):
+    """소리 카탈로그는 마이그레이션으로 상주하므로(conftest) 게스트는 항상 기본 모드 + 데모 알림을 받는다.
+
+    _DEFAULT_MODES 의 소리 이름이 실제 카탈로그와 한 글자라도 어긋나면 그 모드는 생성되지
+    않으므로 모드 수 단언에서 잡힌다 — 테스트가 소리를 직접 만들어 쓰던 시절엔 못 잡던 회귀다.
+    """
     tokens = await auth_service.guest_login(db)
 
     assert tokens.access_token
@@ -82,25 +86,19 @@ async def test_guest_login_without_catalog_still_creates_user(db):
     assert user.terms_agreed is True
     assert user.push_enabled is False
     await _assert_login_left_devices_alone(db, user.id)
-    assert await _count(db, Mode) == 0
-    assert await _count(db, Notification) == 0
+    assert await _count(db, Mode) == len(auth_service._DEFAULT_MODES)
+    assert await _count(db, Notification) == len(auth_service._DEMO_NOTIFICATIONS)
 
 
 @pytest.mark.asyncio
-async def test_guest_login_seeds_demo_data_when_catalog_present(db):
-    db.add(SoundCategory(id=1, name="긴급"))
-    await db.flush()
-    demo_sounds = {n for _, _, names, _ in auth_service._DEMO_MODES for n in names}
-    for i, name in enumerate(sorted(demo_sounds), start=1):
-        db.add(Sound(id=i, name=name, category_id=1))
-    await db.commit()
+async def test_google_first_login_seeds_modes_but_no_demo_notifications(db, monkeypatch):
+    """실계정엔 기본 모드만 — 가짜 감지 기록(데모 알림)은 넣지 않는다."""
+    monkeypatch.setattr(auth_service, "verify_google_id_token", _fake_google("g-seed", "seed@gmail.com"))
 
-    await auth_service.guest_login(db)
+    await auth_service.google_login(db, GoogleLoginRequest(id_token="x"))
 
-    user = (await db.execute(select(User))).scalars().one()
-    await _assert_login_left_devices_alone(db, user.id)
-    assert await _count(db, Mode) == len(auth_service._DEMO_MODES)
-    assert await _count(db, Notification) == len(auth_service._DEMO_NOTIFICATIONS)
+    assert await _count(db, Mode) == len(auth_service._DEFAULT_MODES)
+    assert await _count(db, Notification) == 0
 
 
 @pytest.mark.asyncio
