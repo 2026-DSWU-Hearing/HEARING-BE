@@ -8,7 +8,6 @@
 import pytest
 
 from app.core.exceptions import ForbiddenException, NotFoundException, ValidationException
-from app.models.sound import Sound, SoundCategory
 from app.models.user import User
 from app.services import mode_service
 
@@ -17,12 +16,10 @@ OTHER = 2
 
 
 async def _seed(db) -> None:
+    """유저만 만든다 — sound_id 1..5 는 conftest 가 마이그레이션으로 깔아둔 실제 카탈로그
+    (긴급 카테고리의 화재 경보·사이렌·경보음·응급차량·폭발·파열음)를 그대로 쓴다."""
     db.add(User(id=OWNER, email="owner@t.local", nickname="owner", terms_agreed=True))
     db.add(User(id=OTHER, email="other@t.local", nickname="other", terms_agreed=True))
-    db.add(SoundCategory(id=1, name="긴급"))
-    await db.flush()
-    for i in range(1, 6):  # sound id 1..5
-        db.add(Sound(id=i, name=f"소리{i}", category_id=1))
     await db.commit()
 
 
