@@ -23,7 +23,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _ADMIN_URL = make_url(settings.DATABASE_URL).set(database="postgres")
 _TEST_URL = make_url(settings.DATABASE_URL).set(database=TEST_DB_NAME)
 
-# 소리 카탈로그(카테고리 8 + 소리 67)는 마이그레이션이 깔아주는 **레퍼런스 데이터**다.
+# 소리 카탈로그(카테고리 7 + 소리 61)는 마이그레이션이 깔아주는 **레퍼런스 데이터**다.
 # 운영에는 항상 존재하므로 테스트에서도 전 구간 상주시킨다 — 테스트별 격리(TRUNCATE)
 # 대상에서 빼는 이유. 테스트가 소리를 직접 만들어 쓰면 이름이 코드와 자동으로 맞아떨어져
 # '카탈로그에 없는 이름' 류의 버그를 영영 못 잡는다(실제로 그래서 놓친 적 있음).

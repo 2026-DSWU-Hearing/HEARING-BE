@@ -152,7 +152,7 @@ All REST routes are unprefixed; see `/docs` for full request/response schemas.
 | Sounds | `GET /sounds`, `GET /sounds/categories` | fixed catalog; Korean labels are part of the FE contract |
 | Devices | `GET /devices`, `POST /devices/connect`, `PATCH/DELETE /devices/{id}`, `POST /devices/{id}/detections` | connect = instant hardware check + active-user switch; detections endpoint is called by the AI server / wearable |
 | Notifications | `GET /notifications`, `PATCH /{id}/read`, `DELETE /{id}` | detection history |
-| WebSocket | `WS /ws/users/me/detections`, `WS /ws/devices` | in-app alerts / hardware channel — see [`docs/websocket.md`](docs/websocket.md) |
+| WebSocket | `WS /ws/users/me/detections`, `WS /ws/users/me/livesound`, `WS /ws/devices` | in-app alerts / client-mic live detection / hardware channel — see [`docs/websocket.md`](docs/websocket.md) |
 
 ## Project layout
 

@@ -4,6 +4,7 @@ from app.core.exceptions import AuthException
 from app.core.security import DEVICE_WS_SOURCES, USER_ACCESS_SOURCES, decode_access_token
 from app.websocket import device_handler
 from app.websocket.detection_handler import handle_detection_socket
+from app.websocket.livesound_handler import handle_livesound_socket
 
 router = APIRouter()
 
@@ -24,6 +25,18 @@ async def ws_detections(ws: WebSocket, token: str = Query(...)):
         await _reject(ws, 4401)
         return
     await handle_detection_socket(ws, claims.user_id)
+
+
+@router.websocket("/ws/users/me/livesound")
+async def ws_livesound(ws: WebSocket, token: str = Query(...)):
+    """실시간 소리 감지 화면 전용 — 클라이언트 마이크 PCM 을 AI 분석 서버로 릴레이한다.
+    감지 흐름(/ws/users/me/detections)과 무관: 저장·알림·진동·모드 필터가 전부 없다."""
+    try:
+        claims = decode_access_token(token, USER_ACCESS_SOURCES)
+    except AuthException:
+        await _reject(ws, 4401)
+        return
+    await handle_livesound_socket(ws, claims.user_id)
 
 
 @router.websocket("/ws/devices")
