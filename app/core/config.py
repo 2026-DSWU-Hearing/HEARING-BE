@@ -33,6 +33,19 @@ class Settings(BaseSettings):
 
         return normalize_mac(v)
 
+    # HEARING-MODEL(AI) 의 **분석 전용** WS. livesound(실시간 소리 감지) 릴레이가 여기에 붙는다.
+    # 기존 /ws(ESP32용)와 달리 알림·쿨다운·백엔드 POST 부수효과가 없어야 한다 — 그쪽에 붙이면
+    # 화면만 보는 사용자 때문에 넥밴드 사용자에게 실제 알림·진동이 나간다.
+    AI_SERVER_WS_URL: str = "ws://localhost:8001/ws/analyze"
+    # 세션 시작 시 AI 서버에 붙는 데 허용하는 시간. 왕복 타임아웃과 반드시 **분리**한다 —
+    # 클라이언트는 start 를 보낸 뒤 ready 를 5초까지만 기다리는데(FE READY_TIMEOUT_MS),
+    # 접속 대기가 그만큼 길면 "분석 서버에 연결할 수 없습니다" 안내가 도착하기 전에
+    # 클라이언트가 먼저 끊어서 사용자는 원인을 알 수 없는 침묵만 본다.
+    AI_CONNECT_TIMEOUT_SECONDS: float = 2.0
+    # AI 왕복이 이 시간을 넘으면 그 창은 버린다(오래된 오디오는 화면에 쓸모가 없다).
+    # 이쪽은 ready 이후라 클라이언트의 ready 대기와 무관하다.
+    AI_ANALYZE_TIMEOUT_SECONDS: float = 5.0
+
     FCM_CREDENTIALS_PATH: str = "firebase-credentials.json"
 
     # 인메모리-임시 저장소 (게스트 rate limit, refresh 토큰 블랙리스트). PostgreSQL=관계형-영구와 역할 분리.
