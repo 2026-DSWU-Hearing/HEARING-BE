@@ -85,6 +85,7 @@ detections 채널과 동일 — query string `token`, 실패 시 close code `440
   타입을 섞어 써도 조용히 깨지지 않게 하기 위한 것이다.
 - `confidence` 는 **0~1 실수**. 화면 %는 클라이언트가 환산한다.
 - `sound_id` 는 이름이 소리 카탈로그에 있을 때만 채워지고, 없으면 `null`.
+  카탈로그는 AI(`category_map.py`)가 내보내는 이름에 맞춰 두므로 지금은 전 항목이 매칭되지만,
   **클라이언트는 `null` 을 견뎌야 한다** — AI 가 이름을 하나 추가·변경하면 바로 나온다.
   `sound_id` 가 없다고 그 항목이나 스냅샷을 버리면 화면이 통째로 멈춘다(표시에 필요한 건
   `sound_name`/`confidence` 뿐이다). 목록 key 는 `sound_category` + `sound_name` 조합을 쓴다 —

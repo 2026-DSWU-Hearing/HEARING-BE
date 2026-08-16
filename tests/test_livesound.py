@@ -117,6 +117,41 @@ def test_sound_item_field_names_match_detection_payload():
     assert sound_fields <= set(DetectionCreate.model_fields)
 
 
+@pytest.mark.asyncio
+async def test_catalog_matches_the_names_ai_actually_sends(db):
+    """카탈로그와 AI 의 이름이 어긋나면 양쪽으로 조용히 깨진다.
+
+    - 카탈로그에만 있는 이름: AI 가 만들어낼 수 없으니 모드에 넣어도 평생 안 울린다.
+    - AI 만 내는 이름: 카탈로그에 없으니 sound_id 가 null 로 나간다.
+
+    이름 매칭이 AI↔백엔드의 유일한 연결 고리라, AI(category_map.py)가 여러 YAMNet 라벨을
+    하나로 접어둔 두 곳을 AI 기준으로 고정한다 — 음악 계열 9개 라벨(Music/Piano/Guitar/
+    Violin/Drum/Jazz/Classical music/Orchestra/Electronic music)은 ("생활음", "음악") 하나로,
+    칼·수저(Cutlery, silverware)는 그릇·냄비와 함께 "식기" 로 접혀 "주방 도구" 는 발화 불가능하다.
+    """
+    from sqlalchemy import select
+
+    from app.models.sound import Sound, SoundCategory
+
+    async def pairs(names: list[str]) -> list[tuple[str, str]]:
+        rows = await db.execute(
+            select(SoundCategory.name, Sound.name)
+            .join(Sound, Sound.category_id == SoundCategory.id)
+            .where(Sound.name.in_(names))
+        )
+        return [tuple(row) for row in rows]
+
+    assert await pairs(
+        ["음악", "대중 음악", "피아노", "현악기", "드럼", "재즈", "클래식"]
+    ) == [("생활음", "음악")]
+
+    assert await pairs(["주방 도구"]) == []
+
+    # 비워진 '음악' 카테고리를 남기면 소리 목록 화면에 항목 없는 섹션이 뜬다.
+    categories = (await db.execute(select(SoundCategory.name))).scalars().all()
+    assert "음악" not in categories
+
+
 # --- 응답 변환 ---------------------------------------------------------------
 
 
