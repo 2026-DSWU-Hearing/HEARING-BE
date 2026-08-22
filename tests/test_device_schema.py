@@ -44,6 +44,7 @@ def test_detection_accepts_supported_directions(direction):
     payload = DetectionCreate(
         sound_name="사이렌",
         sound_category="긴급",
+        confidence=0.9,
         detected_at="2026-07-16T12:00:00Z",
         direction=direction,
     )
@@ -55,6 +56,7 @@ def test_detection_defaults_direction_to_unknown():
     payload = DetectionCreate(
         sound_name="사이렌",
         sound_category="긴급",
+        confidence=0.9,
         detected_at="2026-07-16T12:00:00Z",
     )
 
@@ -66,6 +68,7 @@ def test_detection_rejects_unsupported_direction():
         DetectionCreate(
             sound_name="사이렌",
             sound_category="긴급",
+            confidence=0.9,
             detected_at="2026-07-16T12:00:00Z",
             direction="left",
         )

@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.models.device import Device
+from app.models.notification import Notification
 from app.models.sound import Sound
 from app.models.user import User
 from app.services.device_service import THE_DEVICE_ID
@@ -81,7 +82,7 @@ async def test_matched_detection_is_saved_and_unmatched_ignored(api_client):
 
     r = await client.get("/notifications", headers=_auth())
     assert r.status_code == 200, r.text
-    notifs = r.json()
+    notifs = r.json()["items"]
     assert len(notifs) == 1  # 매칭 1건만 저장
     assert notifs[0]["sound_name"] == MATCHED
 
@@ -96,7 +97,7 @@ async def test_do_not_disturb_suppresses_everything(api_client):
     assert r.status_code == 200, r.text
 
     r = await client.get("/notifications", headers=_auth())
-    assert r.json() == []  # 방해금지면 매칭돼도 기록조차 남기지 않음
+    assert r.json()["items"] == []  # 방해금지면 매칭돼도 기록조차 남기지 않음
 
 
 @pytest.mark.asyncio
@@ -110,7 +111,7 @@ async def test_detection_without_active_user_is_dropped(api_client):
     assert r.status_code == 200, r.text
 
     r = await client.get("/notifications", headers=_auth())
-    assert r.json() == []
+    assert r.json()["items"] == []
 
 
 @pytest.mark.asyncio
@@ -130,7 +131,11 @@ async def test_release_keeps_history_and_stops_future_alerts(api_client):
     assert r.status_code == 200, r.text
 
     r = await client.get("/notifications", headers=_auth())
-    notifs = r.json()
+    notifs = r.json()["items"]
     assert len(notifs) == 1  # 해제 전 기록은 유지, 해제 후 감지는 미기록
     assert notifs[0]["sound_name"] == MATCHED
-    assert notifs[0]["device_id"] == THE_DEVICE_ID  # 행이 삭제되지 않으므로 참조도 그대로
+
+    # device_id 는 FE 응답에 없다(WS 페이로드와 필드를 맞추느라 뺐다) — DB 로 직접 본다.
+    async with session_factory() as db:
+        device_ids = (await db.execute(select(Notification.device_id))).scalars().all()
+    assert list(device_ids) == [THE_DEVICE_ID]  # 행이 삭제되지 않으므로 참조도 그대로
