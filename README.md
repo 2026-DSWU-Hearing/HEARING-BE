@@ -153,7 +153,7 @@ All REST routes are unprefixed; see `/docs` for full request/response schemas.
 | Modes | `GET/POST/PUT/DELETE /modes`, `PATCH /modes/{id}/activate`, `PUT /modes/{id}/sounds`, `PATCH /modes/{id}/sounds/{sid}` | sound-filter presets (max 6, one active); per-sound on/off |
 | Sounds | `GET /sounds`, `GET /sounds/categories` | fixed catalog; Korean labels are part of the FE contract |
 | Devices | `GET /devices`, `POST /devices/connect`, `PATCH/DELETE /devices/{id}`, `POST /devices/{id}/detections` | connect = instant hardware check + active-user switch; detections endpoint is called by the AI server / wearable |
-| Notifications | `GET /notifications?cursor&limit`, `POST /notifications/delete`, `POST /notifications/delete-all`, `PATCH /{id}/read`, `DELETE /{id}` | detection history; cursor pagination over `(detected_at, id)`; bulk delete is idempotent |
+| Notifications | `GET /notifications?cursor&limit`, `POST /notifications/delete`, `PATCH /{id}/read`, `DELETE /{id}` | detection history; cursor pagination over `(detected_at, id)`; bulk delete is idempotent |
 | WebSocket | `WS /ws/users/me/detections`, `WS /ws/users/me/livesound`, `WS /ws/devices` | in-app alerts / client-mic live detection / hardware channel — see [`docs/websocket.md`](docs/websocket.md) |
 
 ## Project layout

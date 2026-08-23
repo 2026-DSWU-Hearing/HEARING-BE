@@ -224,24 +224,3 @@ async def delete_notifications(db: AsyncSession, user_id: int, ids: list[int]) -
     )
     await db.commit()
     return result.rowcount
-
-
-async def delete_all_notifications(db: AsyncSession, user_id: int) -> int:
-    """내 알림 전체 삭제. [전체 선택] 이 100개 상한에 걸려 FE 가 요청을 쪼개는 일을 없앤다."""
-    result = await db.execute(delete(Notification).where(Notification.user_id == user_id))
-    await db.commit()
-    return result.rowcount
-
-
-async def mark_read(db: AsyncSession, user_id: int, notification_id: int) -> Notification:
-    notif = await get_owned_or_403(db, Notification, notification_id, user_id)
-    notif.is_read = True
-    await db.commit()
-    await db.refresh(notif)
-    return notif
-
-
-async def delete_notification(db: AsyncSession, user_id: int, notification_id: int) -> None:
-    notif = await get_owned_or_403(db, Notification, notification_id, user_id)
-    await db.delete(notif)
-    await db.commit()
