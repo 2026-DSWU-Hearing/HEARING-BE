@@ -8,17 +8,23 @@
   4) 매칭되면 → Notification 저장 + FCM push + WS broadcast + 기기 진동 명령
 """
 
-from sqlalchemy import select, update
+import base64
+import binascii
+from datetime import datetime
+
+from sqlalchemy import delete, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ValidationException
 from app.core.logger import logger
-from app.db.functions import apply_pagination, get_or_404, get_owned_or_403
+from app.db.functions import get_or_404, get_owned_or_403
 from app.models.device import Device
 from app.models.mode import Mode, ModeSound
 from app.models.notification import Notification
 from app.models.sound import Sound, SoundCategory
 from app.models.user import User
 from app.schemas.device import DetectionCreate
+from app.schemas.notification import NotificationItem, NotificationListResponse
 
 
 async def handle_detection(
@@ -129,16 +135,94 @@ async def _get_active_mode_sound_ids(db: AsyncSession, user_id: int) -> set[int]
     return set(rows)
 
 
+LIST_LIMIT_DEFAULT = 20
+LIST_LIMIT_MIN = 1
+LIST_LIMIT_MAX = 50
+
+
+def _encode_cursor(notification: Notification) -> str:
+    """(detected_at, id) 를 불투명 문자열로. FE 는 내용을 해석하지 않고 그대로 돌려주므로
+    형식은 서버 자유다."""
+    raw = f"{notification.detected_at.isoformat()}|{notification.id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, int]:
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+        detected_at_raw, id_raw = raw.rsplit("|", 1)
+        detected_at = datetime.fromisoformat(detected_at_raw)
+        notification_id = int(id_raw)
+    except (ValueError, TypeError, binascii.Error) as e:
+        raise ValidationException("Invalid cursor") from e
+    # 타임존이 없으면 timestamptz 비교가 UTC 로 간주돼 9시간 어긋난 지점부터 잘린다.
+    if detected_at.tzinfo is None:
+        raise ValidationException("Invalid cursor")
+    return detected_at, notification_id
+
+
 async def list_notifications(
-    db: AsyncSession, user_id: int, page: int = 1, size: int = 30
-) -> list[Notification]:
-    q = (
-        select(Notification)
-        .where(Notification.user_id == user_id)
-        .order_by(Notification.detected_at.desc())
+    db: AsyncSession,
+    user_id: int,
+    cursor: str | None = None,
+    limit: int = LIST_LIMIT_DEFAULT,
+) -> NotificationListResponse:
+    """내 알림을 최신순으로. 커서 기반 무한 스크롤.
+
+    커서는 반드시 (detected_at, id) 튜플이다. detected_at 단독으로 자르면 같은 초에 잡힌
+    감지들이 통째로 누락되거나(`<`) 무한 중복되고(`<=`), id 단독으로 자르면 넥밴드가
+    오프라인 중 버퍼링했다 늦게 올린 감지에서 id 순서와 시간 순서가 어긋나 항목이 건너뛰어진다.
+
+    limit 은 범위를 벗어나도 400 을 내지 않고 잘라낸다 — 무한 스크롤 도중 400 이 나면
+    화면이 이유 없이 멈춘다.
+    """
+    limit = max(LIST_LIMIT_MIN, min(limit, LIST_LIMIT_MAX))
+
+    q = select(Notification).where(Notification.user_id == user_id)
+    if cursor:
+        cursor_detected_at, cursor_id = _decode_cursor(cursor)
+        q = q.where(
+            tuple_(Notification.detected_at, Notification.id)
+            < tuple_(cursor_detected_at, cursor_id)
+        )
+    # 한 건 더 읽어 다음 페이지 존재 여부를 별도 count 쿼리 없이 판단한다.
+    q = q.order_by(Notification.detected_at.desc(), Notification.id.desc()).limit(limit + 1)
+
+    rows = list((await db.execute(q)).scalars().all())
+    has_next = len(rows) > limit
+    items = rows[:limit]
+    return NotificationListResponse(
+        items=[NotificationItem.model_validate(row) for row in items],
+        next_cursor=_encode_cursor(items[-1]) if has_next else None,
+        has_next=has_next,
     )
-    result = await db.execute(apply_pagination(q, page, size))
-    return list(result.scalars().all())
+
+
+async def delete_notifications(db: AsyncSession, user_id: int, ids: list[int]) -> int:
+    """선택 삭제. **멱등** — 없는 id·이미 지운 id·남의 id 가 섞여도 404·403 을 내지 않고
+    조용히 건너뛴다.
+
+    이유 둘: 사용자가 삭제 모드에서 고르는 사이 WS 로 목록이 갱신되거나 다른 세션에서 이미
+    지웠을 수 있어서, 그때 에러를 띄우면 '지우려던 게 이미 없는데 실패했다'는 무의미한 실패가
+    된다. 그리고 남의 id 에 403 을 주면 id 존재 여부가 새어 나간다(enumeration).
+
+    user_id 조건이 소유권 검사를 겸한다 — 남의 행은 WHERE 에 걸리지 않아 애초에 안 지워진다.
+    """
+    result = await db.execute(
+        delete(Notification).where(
+            Notification.user_id == user_id,
+            Notification.id.in_(set(ids)),  # 중복은 서버가 제거
+        )
+    )
+    await db.commit()
+    return result.rowcount
+
+
+async def delete_all_notifications(db: AsyncSession, user_id: int) -> int:
+    """내 알림 전체 삭제. [전체 선택] 이 100개 상한에 걸려 FE 가 요청을 쪼개는 일을 없앤다."""
+    result = await db.execute(delete(Notification).where(Notification.user_id == user_id))
+    await db.commit()
+    return result.rowcount
 
 
 async def mark_read(db: AsyncSession, user_id: int, notification_id: int) -> Notification:

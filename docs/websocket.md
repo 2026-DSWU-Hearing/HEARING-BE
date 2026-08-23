@@ -29,6 +29,14 @@ ws://localhost:8000/ws/users/me/detections?token={accessToken}
 }
 ```
 
+`data` 는 `GET /notifications` 의 `items` 원소와 **같은 스키마(NotificationItem)에서 나온다** —
+문서로 맞추는 게 아니라 코드가 한 모델을 공유하므로 갈라질 수 없다. 클라이언트는 이 이벤트를
+목록 캐시 맨 앞에 그대로 끼워 넣고 `id` 로 중복을 제거하면 된다(`id` 는 DB 에 저장된 뒤 확정된
+PK 라 그대로 `POST /notifications/delete` 에 실어도 된다).
+
+`confidence` 는 널이 아님이 보장된다 — 수신 단계(`POST /devices/{id}/detections`)와 DB 제약
+양쪽에서 막는다. `detected_at` 은 항상 타임존 오프셋을 포함한다.
+
 # WebSocket: 실시간 소리 감지 (livesound)
 
 ```text

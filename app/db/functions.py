@@ -23,7 +23,3 @@ async def get_owned_or_403(db: AsyncSession, model: type[T], obj_id: int, user_i
     if obj.user_id != user_id:
         raise ForbiddenException(f"Not your {model.__name__.lower()}")
     return obj
-
-
-def apply_pagination(query, page: int = 1, size: int = 20):
-    return query.offset((page - 1) * size).limit(size)

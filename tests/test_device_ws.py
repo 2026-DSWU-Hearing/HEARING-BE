@@ -115,6 +115,7 @@ async def test_handle_detection_sends_vibrate_with_user_strength(monkeypatch):
         sound_id=20,
         sound_name="사이렌",
         sound_category="긴급",
+        confidence=0.9,
         detected_at=datetime.now(timezone.utc),
         direction="FRONT",
     )

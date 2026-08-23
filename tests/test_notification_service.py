@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -46,6 +47,7 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
         sound_id=20,
         sound_name="test sound",
         sound_category="test category",
+        confidence=0.9,
         detected_at=datetime.now(timezone.utc),
     )
 
@@ -100,6 +102,7 @@ async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
         sound_id=20,
         sound_name="test sound",
         sound_category="test category",
+        confidence=0.9,
         detected_at=datetime.now(timezone.utc),
     )
     broadcasts = []
@@ -137,3 +140,49 @@ async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
     assert database_session.commit_count == 1
     assert database_session.executed_statements == []
     assert broadcasts == [(1, notification)]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_payload_matches_list_item_schema(monkeypatch):
+    """WS 페이로드와 GET /notifications 의 items 는 같은 모델에서 나와야 한다.
+
+    FE 는 WS 이벤트를 목록 캐시 맨 앞에 그대로 끼워 넣으므로 두 경로가 갈라지면 같은 알림이
+    두 번 보이거나 삭제 요청의 id 가 서버와 안 맞는다. 여기서 실제 직렬화 결과를 확인한다
+    (다른 테스트들은 broadcast_detection 자체를 mock 해서 이 지점을 못 본다).
+    """
+    from app.schemas.notification import NotificationItem
+    from app.websocket import manager as manager_module
+
+    sent = []
+
+    async def capture(user_id, payload):
+        sent.append((user_id, payload))
+
+    monkeypatch.setattr(manager_module.manager, "send_to_user", capture)
+
+    notification = SimpleNamespace(
+        id=7,
+        sound_name="사이렌",
+        sound_category="긴급",
+        source="ai-server",
+        confidence=0.95,
+        location=None,
+        detected_at=datetime(2026, 8, 22, 3, 4, 5, tzinfo=timezone.utc),
+    )
+
+    await detection_handler.broadcast_detection(42, notification)
+
+    assert len(sent) == 1
+    user_id, payload = sent[0]
+    assert user_id == 42
+    assert payload["type"] == "detection"
+
+    data = payload["data"]
+    assert set(data) == set(NotificationItem.model_fields)
+    # 널이면 FE 가 이 이벤트가 섞인 페이지 전체를 무효로 본다.
+    assert isinstance(data["confidence"], float)
+    # 오프셋 없는 문자열은 브라우저가 UTC 로도 로컬로도 해석해 9시간 어긋난다.
+    assert datetime.fromisoformat(data["detected_at"]).tzinfo is not None
+    # WS 는 JSON 으로 나가므로 직렬화 가능한 값만 있어야 한다(datetime 객체가 남으면 터진다).
+    json.dumps(payload)
+
