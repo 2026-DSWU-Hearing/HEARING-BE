@@ -35,9 +35,8 @@ class Notification(Base, TimestampMixin):
     sound_category: Mapped[str] = mapped_column(String(50), nullable=False)
 
     source: Mapped[str] = mapped_column(String(20), nullable=False)
-    # 널 금지 — FE 는 confidence 가 널이면 그 페이지 전체를 무효로 보고 목록을 비운다.
-    # 수신 단계(DetectionCreate)에서도 필수라 여기까지 널이 올 수 없다.
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    # 프로듀서가 점수를 안 보내면 널. 감지 자체를 버리지 않기 위한 선택이다(DetectionCreate 참고).
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     location: Mapped[str | None] = mapped_column(String(100), nullable=True)
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

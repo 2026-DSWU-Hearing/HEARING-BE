@@ -64,6 +64,14 @@ async def handle_detection(
 
     location = None  # 역지오코딩(location_service) 보류 — payload 좌표는 아직 사용 안 함
 
+    # confidence 없이도 감지는 저장한다(화재 경보를 메타데이터 하나 때문에 잃지 않는다).
+    # 다만 조용히 넘기면 프로듀서 버그를 못 잡으므로 로그로 드러낸다.
+    if payload.confidence is None:
+        logger.warning(
+            "detection without confidence: source=%s user_id=%s sound=%s/%s",
+            source, user_id, payload.sound_category, payload.sound_name,
+        )
+
     notification = Notification(
         user_id=user_id,
         device_id=device.id,

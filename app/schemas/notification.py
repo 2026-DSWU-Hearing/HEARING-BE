@@ -12,9 +12,9 @@ class NotificationItem(BaseModel):
     id 가 삭제 요청에 실려 나가 서버가 못 알아본다. 손으로 맞춘 dict 두 벌은 언젠가 갈라지므로
     모델 하나로 묶어 갈라지는 것 자체를 불가능하게 만든다.
 
-    confidence 에 널을 허용하지 않는 이유: FE 검증기는 이 값이 널이면 **그 페이지 전체**를
-    잘못된 응답으로 보고 목록을 빈 배열로 만든다(항목 하나가 빠지는 게 아니다). 수신 단계
-    (DetectionCreate)와 DB 제약으로 널을 막으므로 여기까지 널이 올 수 없다.
+    confidence 는 널일 수 있다 — 감지 프로듀서가 점수를 안 보낸 경우다. 감지를 버리느니
+    메타데이터를 비워 두는 쪽을 택했다(DetectionCreate 주석 참고). 알림 화면은 이 값을
+    표시하지 않으므로 널이어도 보이는 것은 달라지지 않는다.
 
     device_id·sound_id·is_read 는 일부러 뺐다 — WS 페이로드에 없는 필드를 목록에만 넣으면
     FE 가 두 경로를 같은 타입으로 못 쓴다.
@@ -26,7 +26,7 @@ class NotificationItem(BaseModel):
     sound_name: str
     sound_category: str
     source: str
-    confidence: float
+    confidence: float | None
     location: str | None
     detected_at: datetime
 
@@ -64,7 +64,7 @@ class NotificationResponse(BaseModel):
     sound_name: str
     sound_category: str
     source: str
-    confidence: float
+    confidence: float | None
     location: str | None
     detected_at: datetime
     is_read: bool

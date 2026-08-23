@@ -34,8 +34,9 @@ ws://localhost:8000/ws/users/me/detections?token={accessToken}
 목록 캐시 맨 앞에 그대로 끼워 넣고 `id` 로 중복을 제거하면 된다(`id` 는 DB 에 저장된 뒤 확정된
 PK 라 그대로 `POST /notifications/delete` 에 실어도 된다).
 
-`confidence` 는 널이 아님이 보장된다 — 수신 단계(`POST /devices/{id}/detections`)와 DB 제약
-양쪽에서 막는다. `detected_at` 은 항상 타임존 오프셋을 포함한다.
+`confidence` 는 **널일 수 있다** — 감지 프로듀서가 점수를 안 보낸 경우다. 감지를 통째로 버리느니
+메타데이터를 비워 두는 쪽을 택했으므로 클라이언트는 널을 받아 처리해야 한다(알림 화면은 이 값을
+표시하지 않는다). `detected_at` 은 항상 타임존 오프셋을 포함한다.
 
 # WebSocket: 실시간 소리 감지 (livesound)
 

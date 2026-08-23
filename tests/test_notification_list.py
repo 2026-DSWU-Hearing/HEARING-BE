@@ -104,7 +104,7 @@ async def test_item_schema_matches_websocket_payload(api_client):
     item = response.json()["items"][0]
 
     assert set(item) == set(NotificationItem.model_fields)
-    # confidence 가 널이면 FE 는 이 페이지 전체를 무효로 보고 목록을 비운다.
+    # 널 허용이지만 시드가 값을 넣었으므로 실수로 나와야 한다(타입 자체는 float | None).
     assert isinstance(item["confidence"], float)
     # 오프셋 없는 시각은 브라우저가 UTC 로도 로컬로도 해석해 9시간 어긋난다.
     assert datetime.fromisoformat(item["detected_at"]).tzinfo is not None

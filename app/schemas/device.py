@@ -45,23 +45,21 @@ class DeviceResponse(BaseModel):
 class DetectionCreate(BaseModel):
     """POST /devices/{id}/detections — 웨어러블/AI서버 공통 페이로드.
 
-    confidence 와 detected_at 을 여기서 엄격하게 막는 이유는 둘 다 **조용히** 망가지기
-    때문이다. 저장된 뒤에는 어느 쪽도 에러를 내지 않는다:
+    detected_at 은 타임존을 강제한다 — 없이 오면 timestamptz 컬럼이 UTC 로 간주해 KST 기준
+    9시간 어긋난 시각이 조용히 저장되고, 화면에는 그럴듯한 시각이 찍혀 알아채기 어렵다.
 
-    - confidence 가 널이면 FE 는 그 값이 실린 페이지 전체를 무효로 보고 알림 목록을
-      빈 화면으로 만든다. 한 건만 안 보이는 게 아니라 전부 사라진다.
-    - detected_at 이 타임존 없이 오면 timestamptz 컬럼이 UTC 로 간주해 KST 기준
-      9시간 어긋난 시각이 저장된다. 화면에는 그럴듯한 시각이 찍혀 알아채기 어렵다.
-
-    유일한 생산자인 AI 서버(HEARING-MODEL backend_client)는 이미 score 와 오프셋 포함
-    UTC 를 항상 보내므로 이 제약으로 깨지는 호출자는 없다.
+    반대로 confidence 는 **일부러 필수로 두지 않는다**. 화면에 표시하지도 않는 메타데이터
+    하나가 없다고 422 로 거절하면 그 감지가 통째로 사라지는데, 청각보조 앱에서 화재 경보를
+    잃는 손해가 훨씬 크다. 없이 들어오면 널로 저장하고 경고 로그만 남긴다
+    (notification_service.handle_detection) — 감지는 살리고 프로듀서 문제는 드러낸다.
     """
 
     sound_id: int | None = None
     sound_name: str
     sound_category: str
     # allow_inf_nan=False: NaN 은 JSON 에 표준 표현이 없어 FE 의 JSON.parse 가 던진다.
-    confidence: float = Field(allow_inf_nan=False)
+    # 널은 허용하되 NaN/Infinity 는 계속 막는다 — 전자는 '값 없음'이지만 후자는 깨진 값이다.
+    confidence: float | None = Field(default=None, allow_inf_nan=False)
     detected_at: AwareDatetime
     direction: Direction = "UNKNOWN"
     latitude: float | None = None

@@ -179,10 +179,39 @@ async def test_broadcast_payload_matches_list_item_schema(monkeypatch):
 
     data = payload["data"]
     assert set(data) == set(NotificationItem.model_fields)
-    # 널이면 FE 가 이 이벤트가 섞인 페이지 전체를 무효로 본다.
     assert isinstance(data["confidence"], float)
     # 오프셋 없는 문자열은 브라우저가 UTC 로도 로컬로도 해석해 9시간 어긋난다.
     assert datetime.fromisoformat(data["detected_at"]).tzinfo is not None
     # WS 는 JSON 으로 나가므로 직렬화 가능한 값만 있어야 한다(datetime 객체가 남으면 터진다).
     json.dumps(payload)
+
+
+def test_detection_without_confidence_is_accepted():
+    """confidence 없이 온 감지를 422 로 거절하면 그 알림이 통째로 사라진다.
+
+    화면에 표시하지도 않는 메타데이터 하나 때문에 화재 경보를 잃는 손해가 훨씬 크므로,
+    널로 받아 저장하고 경고 로그만 남긴다.
+    """
+    payload = DetectionCreate(
+        sound_name="화재 경보",
+        sound_category="긴급",
+        detected_at=datetime.now(timezone.utc),
+    )
+
+    assert payload.confidence is None
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_detection_still_rejects_broken_confidence(bad):
+    """널('값 없음')은 받아주되 NaN/Infinity('깨진 값')는 계속 막는다 —
+    JSON 에 표준 표현이 없어 FE 의 JSON.parse 가 던진다."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        DetectionCreate(
+            sound_name="사이렌",
+            sound_category="긴급",
+            confidence=bad,
+            detected_at=datetime.now(timezone.utc),
+        )
 
