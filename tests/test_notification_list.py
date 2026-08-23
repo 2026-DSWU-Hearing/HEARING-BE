@@ -217,18 +217,3 @@ async def test_delete_rejects_out_of_range_id_count(api_client, ids):
 
     response = await client.post("/notifications/delete", headers=_auth(), json={"ids": ids})
     assert response.status_code == 422, response.text
-
-
-@pytest.mark.asyncio
-async def test_delete_all_clears_only_my_notifications(api_client):
-    client, session_factory = api_client
-    await _seed_users(session_factory)
-    await _seed_notifications(session_factory, USER_ID, 4)
-    await _seed_notifications(session_factory, OTHER_USER_ID, 3)
-
-    response = await client.post("/notifications/delete-all", headers=_auth())
-    assert response.status_code == 200, response.text
-    assert response.json()["deleted_count"] == 4
-
-    assert (await client.get("/notifications", headers=_auth())).json()["items"] == []
-    assert len((await client.get("/notifications", headers=_auth(OTHER_USER_ID))).json()["items"]) == 3

@@ -43,7 +43,7 @@ class NotificationDeleteRequest(BaseModel):
     """POST /notifications/delete — 선택 삭제.
 
     상한 100 은 요청 크기를 묶기 위한 값이다. 화면의 [전체 선택]로 그보다 많아지면
-    FE 가 쪼개 보내는 대신 POST /notifications/delete-all 을 쓰면 된다.
+    FE 가 여러 번 나눠 보낸다.
     """
 
     ids: list[int] = Field(min_length=1, max_length=100)

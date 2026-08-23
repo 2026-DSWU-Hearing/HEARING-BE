@@ -38,15 +38,6 @@ async def delete_notifications(
     return NotificationDeleteResponse(deleted_count=deleted_count)
 
 
-@router.post("/delete-all", response_model=NotificationDeleteResponse)
-async def delete_all_notifications(
-    user_id: int = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    deleted_count = await notification_service.delete_all_notifications(db, user_id)
-    return NotificationDeleteResponse(deleted_count=deleted_count)
-
-
 @router.patch("/{notification_id}/read", response_model=NotificationResponse)
 async def mark_read(notification_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     return await notification_service.mark_read(db, user_id, notification_id)
