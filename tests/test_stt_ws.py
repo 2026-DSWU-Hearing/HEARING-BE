@@ -216,7 +216,9 @@ async def test_rtzr_dropping_mid_session_closes_with_4503(stream):
 
 
 @pytest.fixture
-def handler_db(monkeypatch, test_session_factory):
+def handler_db(monkeypatch, test_session_factory, db):
+    # db 픽스처는 쓰지 않지만 의존한다 — 테스트 후 TRUNCATE 가 거기 달려 있어서, 빠지면
+    # 여기서 넣은 행이 다음 테스트로 새어 나간다.
     monkeypatch.setattr(stt_handler, "AsyncSessionLocal", test_session_factory)
     return test_session_factory
 

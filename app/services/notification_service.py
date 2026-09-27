@@ -6,6 +6,11 @@
      - sound_id 가 오면 그대로, AI서버처럼 한글 (category, name)만 오면 이름으로 해석
   3) 매칭 안되면 → 무시 (DB 저장하지 않음)
   4) 매칭되면 → Notification 저장 + FCM push + WS broadcast + 기기 진동 명령
+
+온디바이스 긴급 판정(payload.ondevice_vibrated):
+  넥밴드의 온디바이스 AI 가 몇몇 소리를 먼저 긴급으로 판정해 스스로 진동한다. 그 감지는
+  웹앱 사후 알림(저장·푸시)만 하고 4)의 진동 명령은 보내지 않는다 — 이미 울렸다.
+  모드 필터는 똑같이 적용한다. (모드 밖 소리도 기록만 남기는 안은 보류 중.)
 """
 
 import base64
@@ -41,12 +46,14 @@ async def handle_detection(
     # 기록(DB)·WS 인앱 알림·FCM 푸시 전부 중단 (앱 푸시 OFF 와 달리 기록도 남기지 않음).
     user = await get_or_404(db, User, user_id)
     if user.do_not_disturb:
+        if payload.ondevice_vibrated:
+            # 방해금지 중에는 넥밴드가 온디바이스 AI 를 돌리지 않는다. 그런데도 왔다면 넥밴드가
+            # 방해금지를 모르고 진동한 것(백엔드 소켓이 끊긴 동안 앱에서 켠 경우) — 로그로 드러낸다.
+            logger.warning(
+                "on-device vibration reported while do-not-disturb is on user_id=%s sound=%s/%s",
+                user_id, payload.sound_category, payload.sound_name,
+            )
         logger.info("do-not-disturb on, skip detection user_id=%s", user_id)
-        return None
-
-    active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
-    if active_sound_ids is None:
-        logger.info("no active mode for user_id=%s, skip", user_id)
         return None
 
     # AI서버는 sound_id 를 모르고 한글 (category, name)만 보낸다 → 이름으로 sound_id 해석.
@@ -55,10 +62,15 @@ async def handle_detection(
     if sound_id is None:
         sound_id = await _resolve_sound_id(db, payload.sound_category, payload.sound_name)
 
+    active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
+    if active_sound_ids is None:
+        logger.info("no active mode for user_id=%s, skip", user_id)
+        return None
+
     if sound_id is None or sound_id not in active_sound_ids:
         logger.info(
-            "sound not in active mode (user=%s, id=%s, %s/%s), skip",
-            user_id, sound_id, payload.sound_category, payload.sound_name,
+            "sound not in active mode (user=%s, id=%s, %s/%s, ondevice_vibrated=%s), skip",
+            user_id, sound_id, payload.sound_category, payload.sound_name, payload.ondevice_vibrated,
         )
         return None
 
@@ -106,13 +118,15 @@ async def handle_detection(
 
     # 하드웨어 진동 명령 — do_not_disturb·모드 매칭은 위에서 이미 통과했다.
     # 기기 WS 가 끊겨 있으면 드롭 (진동은 실시간 경보라 큐잉하지 않음). 연결은 MAC 단위.
-    await device_handler.send_vibrate(
-        mac=device.mac_address,
-        strength=user.haptic_strength,
-        sound_name=notification.sound_name,
-        sound_category=notification.sound_category,
-        direction=payload.direction,
-    )
+    # 온디바이스가 이미 진동한 감지에는 보내지 않는다 — 같은 소리에 두 번 울린다.
+    if not payload.ondevice_vibrated:
+        await device_handler.send_vibrate(
+            mac=device.mac_address,
+            strength=user.haptic_strength,
+            sound_name=notification.sound_name,
+            sound_category=notification.sound_category,
+            direction=payload.direction,
+        )
     return notification
 
 

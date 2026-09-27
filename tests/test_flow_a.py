@@ -139,3 +139,95 @@ async def test_release_keeps_history_and_stops_future_alerts(api_client):
     async with session_factory() as db:
         device_ids = (await db.execute(select(Notification.device_id))).scalars().all()
     assert list(device_ids) == [THE_DEVICE_ID]  # 행이 삭제되지 않으므로 참조도 그대로
+
+
+# --- 온디바이스 긴급 판정(ondevice_vibrated) ---------------------------------------
+# 넥밴드의 온디바이스 AI 가 몇몇 소리를 먼저 긴급으로 판정해 스스로 진동한다. 그 감지는
+# 웹앱 사후 알림(저장·푸시)만 하고 진동 명령은 다시 보내지 않는다. 모드 필터는 그대로 적용한다.
+
+
+def _ondevice_detection(sound_name: str) -> dict:
+    return {**_detection(sound_name), "ondevice_vibrated": True}
+
+
+@pytest.fixture
+def vibrations(monkeypatch):
+    """하드웨어로 나가는 진동 명령을 가로챈다(실제 기기 WS 는 테스트에 없다)."""
+    from app.websocket import device_handler
+
+    sent: list[dict] = []
+
+    async def _spy(**kwargs):
+        sent.append(kwargs)
+
+    monkeypatch.setattr(device_handler, "send_vibrate", _spy)
+    return sent
+
+
+@pytest.mark.asyncio
+async def test_ondevice_detection_is_saved_but_does_not_vibrate_again(api_client, vibrations):
+    """넥밴드는 이미 울렸다. 백엔드가 진동 명령을 또 보내면 같은 소리에 두 번 울린다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)
+    url = f"/devices/{THE_DEVICE_ID}/detections"
+
+    r = await client.post(url, headers=_auth("ai-server"), json=_ondevice_detection(MATCHED))
+    assert r.status_code == 200, r.text
+    assert vibrations == []
+
+    # 같은 소리라도 백엔드가 판단한 감지는 종전대로 진동 명령이 나간다.
+    await client.post(url, headers=_auth("ai-server"), json=_detection(MATCHED))
+    assert [v["sound_name"] for v in vibrations] == [MATCHED]
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["sound_name"] for item in items] == [MATCHED, MATCHED]  # 기록은 둘 다 남는다
+
+
+@pytest.mark.asyncio
+async def test_ondevice_detection_still_goes_through_mode_filter(api_client, vibrations):
+    """모드 밖 소리도 기록만 남기는 안은 보류 — 지금은 온디바이스 판정이어도 필터를 똑같이 탄다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)  # 경보음은 모드에 없다
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_ondevice_detection(UNMATCHED)
+    )
+    assert r.status_code == 200, r.text
+
+    assert (await client.get("/notifications", headers=_auth())).json()["items"] == []
+    assert vibrations == []
+
+
+@pytest.mark.asyncio
+async def test_do_not_disturb_still_suppresses_ondevice_detection(api_client, vibrations):
+    """넥밴드가 방해금지를 모르고 진동한 경우(백엔드 소켓이 끊긴 동안 앱에서 켬)에도
+    방해금지의 '완전 차단'이 우선한다."""
+    client, session_factory = api_client
+    await _seed(session_factory, do_not_disturb=True)
+    await _make_active_mode_with_siren(client, session_factory)
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_ondevice_detection(MATCHED)
+    )
+    assert r.status_code == 200, r.text
+
+    assert (await client.get("/notifications", headers=_auth())).json()["items"] == []
+    assert vibrations == []
+
+
+@pytest.mark.asyncio
+async def test_detection_with_explicit_false_flag_vibrates_as_before(api_client, vibrations):
+    """AI 서버는 true/false 를 항상 보낸다 — false 는 필드가 없을 때와 같아야 한다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)
+
+    await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections",
+        headers=_auth("ai-server"),
+        json={**_detection(MATCHED), "ondevice_vibrated": False},
+    )
+
+    assert [v["sound_name"] for v in vibrations] == [MATCHED]

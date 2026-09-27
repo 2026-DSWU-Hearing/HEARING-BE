@@ -2,7 +2,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.functions import get_or_404
 from app.models.user import User
-from app.schemas.user import AgreementUpdate, DoNotDisturbUpdate, FcmTokenUpdate, HapticUpdate, PushEnabledUpdate, UserUpdate
+from app.schemas.user import (
+    AgreementUpdate,
+    DoNotDisturbUpdate,
+    EmergencyAlertUpdate,
+    FcmTokenUpdate,
+    HapticUpdate,
+    PushEnabledUpdate,
+    UserUpdate,
+)
+from app.websocket import device_handler
 
 
 async def get_me(db: AsyncSession, user_id: int) -> User:
@@ -25,6 +34,7 @@ async def update_haptic(db: AsyncSession, user_id: int, payload: HapticUpdate) -
     user.haptic_strength = payload.haptic_strength
     await db.commit()
     await db.refresh(user)
+    await device_handler.sync_settings_for_user(db, user)
     return user
 
 
@@ -33,6 +43,16 @@ async def update_do_not_disturb(db: AsyncSession, user_id: int, payload: DoNotDi
     user.do_not_disturb = payload.do_not_disturb
     await db.commit()
     await db.refresh(user)
+    await device_handler.sync_settings_for_user(db, user)
+    return user
+
+
+async def update_emergency_alert(db: AsyncSession, user_id: int, payload: EmergencyAlertUpdate) -> User:
+    user = await get_or_404(db, User, user_id)
+    user.emergency_alert_enabled = payload.emergency_alert_enabled
+    await db.commit()
+    await db.refresh(user)
+    await device_handler.sync_settings_for_user(db, user)
     return user
 
 

@@ -56,6 +56,7 @@ async def connect_device(db: AsyncSession, user_id: int, nickname: str | None) -
     """[기기 연결] — 하드웨어가 지금 서버 WS 에 붙어 있는지 즉시 확인하고, 붙어 있으면
     이 계정을 현재 사용자로 전환한다(다른 계정이 쓰던 중이어도 덮어씀 — 합의된 정책).
     폴링 없이 이 응답 하나로 온보딩의 성공/실패가 결정된다."""
+    from app.websocket import device_handler
     from app.websocket.manager import device_manager
 
     device = await ensure_physical_device(db)
@@ -69,6 +70,8 @@ async def connect_device(db: AsyncSession, user_id: int, nickname: str | None) -
     await db.commit()
     await db.refresh(device)
     logger.info("device active user switched to user_id=%s", user_id)
+    # 설정은 계정별이다 — 사용자가 바뀌면 넥밴드의 방해금지·세기·긴급 알림도 새 사용자 것이어야 한다.
+    await device_handler.send_settings(device.mac_address, user)
     return _to_response(device, user)
 
 
@@ -86,10 +89,14 @@ async def update_device(
 async def delete_device(db: AsyncSession, user_id: int, device_id: int) -> None:
     """'삭제'의 의미 = 내 계정에서 연결 해제. 내가 현재 사용자면 포인터만 비운다(이름은 유지).
     하드웨어 WS 는 닫지 않는다 — 다음 사용자가 [기기 연결]을 바로 누를 수 있어야 한다."""
+    from app.websocket import device_handler
+
     device = await _get_physical_device_or_404(db, device_id)
     if device.active_user_id == user_id:
         device.active_user_id = None
         await db.commit()
+        # 떠난 사용자의 설정이 넥밴드에 남지 않게 기본값으로 되돌린다.
+        await device_handler.send_settings(device.mac_address, None)
 
 
 async def handle_detection(

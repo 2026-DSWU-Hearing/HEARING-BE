@@ -5,6 +5,7 @@ from app.db.dependencies import get_current_user_id, get_db
 from app.schemas.user import (
     AgreementUpdate,
     DoNotDisturbUpdate,
+    EmergencyAlertUpdate,
     FcmTokenUpdate,
     HapticUpdate,
     PushEnabledUpdate,
@@ -39,6 +40,11 @@ async def update_dnd(payload: DoNotDisturbUpdate, user_id: int = Depends(get_cur
 @router.patch("/me/push-enabled", response_model=UserResponse)
 async def update_push_enabled(payload: PushEnabledUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     return await user_service.update_push_enabled(db, user_id, payload)
+
+
+@router.patch("/me/emergency-alert", response_model=UserResponse)
+async def update_emergency_alert(payload: EmergencyAlertUpdate, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
+    return await user_service.update_emergency_alert(db, user_id, payload)
 
 
 @router.post("/me/fcm-token", response_model=UserResponse)
