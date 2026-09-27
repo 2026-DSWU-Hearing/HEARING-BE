@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Integer, String, false
+from sqlalchemy import Boolean, Integer, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -23,6 +23,15 @@ class User(Base, TimestampMixin):
         Boolean,
         default=False,
         server_default=false(),
+        nullable=False,
+    )
+
+    # "긴급 소리 알림 받기" — 넥밴드 온디바이스 AI 의 on/off. 꺼도 AI 서버 → 백엔드 경로의
+    # 알림은 그대로다(꺼지는 건 기기 내 선판정뿐). 기본값은 펌웨어 기본값과 같은 true.
+    emergency_alert_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=true(),
         nullable=False,
     )
 

@@ -14,6 +14,7 @@ class UserResponse(BaseModel):
     haptic_strength: int
     do_not_disturb: bool
     push_enabled: bool
+    emergency_alert_enabled: bool
     terms_agreed: bool
 
 
@@ -43,6 +44,10 @@ class DoNotDisturbUpdate(BaseModel):
 
 class PushEnabledUpdate(BaseModel):
     push_enabled: bool
+
+
+class EmergencyAlertUpdate(BaseModel):
+    emergency_alert_enabled: bool
 
 
 class FcmTokenUpdate(BaseModel):

@@ -64,3 +64,7 @@ class DetectionCreate(BaseModel):
     direction: Direction = "UNKNOWN"
     latitude: float | None = None
     longitude: float | None = None
+    # 넥밴드의 온디바이스 AI 가 이 소리를 긴급으로 판정해 **이미 진동했다**는 표시.
+    # true 면 백엔드는 진동 명령을 보내지 않는다(또 보내면 두 번 울린다) — 웹앱 사후 알림만 한다.
+    # AI 서버는 true/false 를 항상 보낸다. 기본 False 는 필드를 모르는 프로듀서용.
+    ondevice_vibrated: bool = False
