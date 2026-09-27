@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.dependencies import get_db
 from app.main import app
-from app.models import device, mode, notification, sound, user  # noqa: F401  (메타데이터 등록)
+from app.models import conversation, device, mode, notification, quick_reply, sound, user  # noqa: F401  (메타데이터 등록)
 
 # 서비스 유닛테스트는 인메모리 SQLite 가 아니라 **실제 PostgreSQL** 로 돈다
 # (타입·제약·시퀀스·flush 동작이 운영과 동일해야 헛된 통과를 막는다).

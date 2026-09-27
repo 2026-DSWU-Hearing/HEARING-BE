@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # 이쪽은 ready 이후라 클라이언트의 ready 대기와 무관하다.
     AI_ANALYZE_TIMEOUT_SECONDS: float = 5.0
 
+    # RTZR(VITO) 실시간 STT — /ws/conversations/{id}/stt 중계의 상류. 시크릿은 서버에만 둔다
+    # (브라우저 WebSocket 은 Authorization 헤더를 못 붙이고, 번들에 넣으면 그대로 노출된다).
+    # 비어 있으면 STT 소켓이 4503(STT_UNAVAILABLE)으로 닫힌다 — 다른 기능엔 영향 없음.
+    RTZR_CLIENT_ID: str = ""
+    RTZR_CLIENT_SECRET: str = ""
+    RTZR_API_BASE: str = "https://openapi.vito.ai"
+    # 토큰 발급(HTTP)·스트리밍 접속(WS) 각각의 대기 한도. FE 는 소켓이 열리길 무한정 기다리지
+    # 않으므로(브라우저 기본 핸드셰이크 타임아웃) 합쳐서 수 초 안에 끝나야 한다.
+    RTZR_CONNECT_TIMEOUT_SECONDS: float = 5.0
+
     FCM_CREDENTIALS_PATH: str = "firebase-credentials.json"
 
     # 인메모리-임시 저장소 (게스트 rate limit, refresh 토큰 블랙리스트). PostgreSQL=관계형-영구와 역할 분리.

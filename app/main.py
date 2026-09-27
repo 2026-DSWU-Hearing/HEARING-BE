@@ -6,7 +6,17 @@ from app.core.config import settings
 from app.core.handlers import register_exception_handlers
 from app.core.logger import logger
 from app.core.middleware import setup_middleware
-from app.api import auth, users, modes, sounds, devices, notifications, websocket
+from app.api import (
+    auth,
+    conversations,
+    devices,
+    modes,
+    notifications,
+    quick_replies,
+    sounds,
+    users,
+    websocket,
+)
 from app.db.session import AsyncSessionLocal
 from app.services.device_service import ensure_physical_device
 from app.websocket.device_handler import reset_all_connections
@@ -48,6 +58,10 @@ def create_app() -> FastAPI:
     app.include_router(sounds.router, prefix="/sounds", tags=["sounds"])
     app.include_router(devices.router, prefix="/devices", tags=["devices"])
     app.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+    # 양방향 소통 API 만 /api 프리픽스 — FE 가 이 둘을 /api/... 로 하드코딩했다
+    # (HEARING-FE conversationApi.ts · quickReplyApi.ts). 나머지 루트 경로와의 불일치는 FE 에 전달함.
+    app.include_router(conversations.router, prefix="/api/conversations", tags=["conversations"])
+    app.include_router(quick_replies.router, prefix="/api/quick-replies", tags=["quick-replies"])
     app.include_router(websocket.router, tags=["websocket"])
 
     @app.get("/health")

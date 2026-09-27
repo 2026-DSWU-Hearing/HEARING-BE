@@ -5,6 +5,7 @@ from app.core.security import DEVICE_WS_SOURCES, USER_ACCESS_SOURCES, decode_acc
 from app.websocket import device_handler
 from app.websocket.detection_handler import handle_detection_socket
 from app.websocket.livesound_handler import handle_livesound_socket
+from app.websocket.stt_handler import handle_stt_socket, resolve_conversation_close_code
 
 router = APIRouter()
 
@@ -37,6 +38,22 @@ async def ws_livesound(ws: WebSocket, token: str = Query(...)):
         await _reject(ws, 4401)
         return
     await handle_livesound_socket(ws, claims.user_id)
+
+
+@router.websocket("/ws/conversations/{conversation_id}/stt")
+async def ws_stt(ws: WebSocket, conversation_id: int, token: str = Query(...)):
+    """양방향 소통 화면 전용 — 클라이언트 마이크 PCM 을 RTZR 로 중계하고 인식 텍스트를 돌려준다.
+    저장·알림 없음. 확정 문장은 FE 가 쌓았다가 POST /api/conversations/{id}/end 로 올린다."""
+    try:
+        claims = decode_access_token(token, USER_ACCESS_SOURCES)
+    except AuthException:
+        await _reject(ws, 4401)
+        return
+    close_code = await resolve_conversation_close_code(claims.user_id, conversation_id)
+    if close_code is not None:
+        await _reject(ws, close_code)  # 4404 내 대화 아님 / 4409 이미 종료
+        return
+    await handle_stt_socket(ws, claims.user_id, conversation_id)
 
 
 @router.websocket("/ws/devices")
