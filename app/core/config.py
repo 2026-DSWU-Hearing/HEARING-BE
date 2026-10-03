@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # 않으므로(브라우저 기본 핸드셰이크 타임아웃) 합쳐서 수 초 안에 끝나야 한다.
     RTZR_CONNECT_TIMEOUT_SECONDS: float = 5.0
 
+    # 대화는 STT 소켓 주소 때문에 마이크를 켜기 전에 만들어진다 — 앱 종료·네트워크 끊김으로 end/DELETE
+    # 를 못 부르면 미종료 대화가 남는다. 목록/상세엔 안 보이고, 이 시간이 지나면 주기 작업이 지운다.
+    # 대화 하나가 이만큼 이어질 일은 없으므로 진행 중인 대화를 지울 위험은 없다.
+    CONVERSATION_UNENDED_TTL_HOURS: int = 24
+    CONVERSATION_CLEANUP_INTERVAL_MINUTES: int = 60
+
     FCM_CREDENTIALS_PATH: str = "firebase-credentials.json"
 
     # 인메모리-임시 저장소 (게스트 rate limit, refresh 토큰 블랙리스트). PostgreSQL=관계형-영구와 역할 분리.

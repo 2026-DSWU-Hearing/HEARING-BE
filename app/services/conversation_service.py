@@ -3,15 +3,22 @@
 수명주기: create(마이크 켜기 전) → [STT 소켓이 conversation_id 로 붙음] → end(버블 일괄 저장 +
 제목/요약) 또는 delete(빈 대화). 버블 단건 저장 API 는 없다 — 화면 상태는 FE 가 들고 있다가
 종료 때 통째로 올린다(FE useActiveConversationStore 의 결정).
+
+기록(목록/상세)은 종료된 대화만이다. 미종료 대화는 end/DELETE/STT 소켓에서만 보이고, 끝내 종료되지
+않으면 CONVERSATION_UNENDED_TTL_HOURS 뒤 run_unended_cleanup_loop 가 지운다.
 """
 
-from datetime import datetime, timezone
+import asyncio
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.exceptions import ConflictException, NotFoundException
+from app.core.logger import logger
+from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation, ConversationBubble
 from app.schemas.conversation import BubbleIn, ConversationCreate
 
@@ -47,10 +54,15 @@ async def get_owned_conversation(db: AsyncSession, user_id: int, conversation_id
 
 
 async def get_conversation_detail(db: AsyncSession, user_id: int, conversation_id: int) -> Conversation:
+    """미종료 대화도 404 — 기록 화면엔 종료된 대화만 있다(진행 중인 대화는 FE 가 들고 있다)."""
     result = await db.execute(
         select(Conversation)
         .options(selectinload(Conversation.bubbles))
-        .where(Conversation.id == conversation_id, Conversation.user_id == user_id)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+            Conversation.ended_at.is_not(None),
+        )
     )
     conversation = result.scalar_one_or_none()
     if conversation is None:
@@ -62,16 +74,17 @@ async def list_conversations(
     db: AsyncSession, user_id: int, page: int, limit: int
 ) -> tuple[list[Conversation], int, int, int]:
     """(items, total, page, limit). 범위 밖 page/limit 은 400 대신 잘라낸다 — 무한 스크롤 도중
-    400 이 나면 화면이 이유 없이 멈춘다(알림 목록과 같은 정책)."""
+    400 이 나면 화면이 이유 없이 멈춘다(알림 목록과 같은 정책).
+
+    미종료 대화는 items 와 total 양쪽에서 뺀다 — 한쪽만 빼면 has_next·페이지 크기가 어긋난다."""
     page = max(page, 1)
     limit = min(max(limit, 1), LIST_LIMIT_MAX)
+    conditions = (Conversation.user_id == user_id, Conversation.ended_at.is_not(None))
 
-    total = await db.scalar(
-        select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
-    )
+    total = await db.scalar(select(func.count()).select_from(Conversation).where(*conditions))
     result = await db.execute(
         select(Conversation)
-        .where(Conversation.user_id == user_id)
+        .where(*conditions)
         .order_by(Conversation.started_at.desc(), Conversation.id.desc())
         .offset((page - 1) * limit)
         .limit(limit)
@@ -110,6 +123,35 @@ async def delete_conversation(db: AsyncSession, user_id: int, conversation_id: i
     conversation = await get_owned_conversation(db, user_id, conversation_id)
     await db.delete(conversation)  # 버블은 FK CASCADE
     await db.commit()
+
+
+# --- 미종료 대화 정리 -------------------------------------------------------------
+
+
+async def delete_stale_unended_conversations(db: AsyncSession) -> int:
+    """started_at 이 TTL 보다 오래된 미종료 대화를 지우고 지운 개수를 돌려준다. 버블은 DB FK CASCADE."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.CONVERSATION_UNENDED_TTL_HOURS)
+    result = await db.execute(
+        delete(Conversation).where(Conversation.ended_at.is_(None), Conversation.started_at < cutoff)
+    )
+    await db.commit()
+    return result.rowcount or 0
+
+
+async def run_unended_cleanup_loop() -> None:
+    """기동 직후 한 번, 이후 주기마다 정리한다(lifespan 의 백그라운드 태스크). 서버가 꺼져 있던 동안
+    쌓인 것도 기동 때 치워진다. 워커가 여럿이어도 같은 DELETE 라 겹쳐 돌아도 무해하다.
+    한 번 실패(DB 일시 장애 등)로 루프가 죽으면 다시는 안 돌므로 예외는 로그만 남기고 계속한다."""
+    interval = settings.CONVERSATION_CLEANUP_INTERVAL_MINUTES * 60
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                deleted = await delete_stale_unended_conversations(db)
+            if deleted:
+                logger.info("deleted %s stale unended conversations", deleted)
+        except Exception as e:
+            logger.warning("unended conversation cleanup failed: %s", e)
+        await asyncio.sleep(interval)
 
 
 # --- 제목/요약 (휴리스틱) --------------------------------------------------------

@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
@@ -18,6 +19,7 @@ from app.api import (
     websocket,
 )
 from app.db.session import AsyncSessionLocal
+from app.services.conversation_service import run_unended_cleanup_loop
 from app.services.device_service import ensure_physical_device
 from app.websocket.device_handler import reset_all_connections
 
@@ -34,7 +36,12 @@ async def lifespan(app: FastAPI):
     # WS 는 서버 재시작을 살아남지 못하므로 부팅 직후엔 연결된 기기가 없는 게 진실 —
     # 크래시·과거 데이터로 남은 is_connected=true 를 리셋한다(기기 상태의 진실 원천은 WS 수명주기).
     await reset_all_connections()
+    # 종료 못 한 채 남은 대화 정리(conversation_service.run_unended_cleanup_loop).
+    cleanup_task = asyncio.create_task(run_unended_cleanup_loop())
     yield
+    cleanup_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await cleanup_task
 
 
 def create_app() -> FastAPI:
