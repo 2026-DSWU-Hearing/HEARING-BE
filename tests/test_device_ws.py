@@ -106,6 +106,7 @@ async def test_handle_detection_sends_vibrate_with_user_strength(monkeypatch):
     user = SimpleNamespace(
         id=1,
         do_not_disturb=False,
+        emergency_alert_enabled=False,  # 모드 필터 경로를 그대로 타게(긴급 우회 없이) 둔다
         push_enabled=False,
         fcm_token=None,
         haptic_strength=70,

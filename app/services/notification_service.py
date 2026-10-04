@@ -10,7 +10,10 @@
 온디바이스 긴급 판정(payload.ondevice_vibrated):
   넥밴드의 온디바이스 AI 가 몇몇 소리를 먼저 긴급으로 판정해 스스로 진동한다. 그 감지는
   웹앱 사후 알림(저장·푸시)만 하고 4)의 진동 명령은 보내지 않는다 — 이미 울렸다.
-  모드 필터는 똑같이 적용한다. (모드 밖 소리도 기록만 남기는 안은 보류 중.)
+  "긴급 소리 알림 받기"(user.emergency_alert_enabled)가 켜져 있으면 긴급 카테고리는
+  모드 필터를 건너뛴다 — 넥밴드는 모드를 모르고 긴급이면 진동하므로, 백엔드가 모드 밖이라고
+  버리면 사용자는 진동만 받고 앱에 기록이 없어 무슨 소리였는지 알 수 없다(실기기 테스트 10/3).
+  온디바이스가 안 다루는 긴급 소리도 같이 우회해야 "긴급은 다 온다"는 토글 의미와 맞는다.
 """
 
 import base64
@@ -30,6 +33,9 @@ from app.models.sound import Sound, SoundCategory
 from app.models.user import User
 from app.schemas.device import DetectionCreate
 from app.schemas.notification import NotificationItem, NotificationListResponse
+
+# 시드 카탈로그(SoundCategory.name)·AI category_map 의 긴급 카테고리 한글 이름.
+EMERGENCY_CATEGORY = "긴급"
 
 
 async def handle_detection(
@@ -62,17 +68,22 @@ async def handle_detection(
     if sound_id is None:
         sound_id = await _resolve_sound_id(db, payload.sound_category, payload.sound_name)
 
-    active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
-    if active_sound_ids is None:
-        logger.info("no active mode for user_id=%s, skip", user_id)
-        return None
+    # "긴급 소리 알림 받기" ON + 긴급 카테고리면 모드 필터를 건너뛴다.
+    # 활성 모드가 없을 때도 긴급 소리는 알림이 가야 하므로 None 확인까지 if 안에 둔다.
+    emergency_bypass = user.emergency_alert_enabled and payload.sound_category == EMERGENCY_CATEGORY
 
-    if sound_id is None or sound_id not in active_sound_ids:
-        logger.info(
-            "sound not in active mode (user=%s, id=%s, %s/%s, ondevice_vibrated=%s), skip",
-            user_id, sound_id, payload.sound_category, payload.sound_name, payload.ondevice_vibrated,
-        )
-        return None
+    if not emergency_bypass:
+        active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
+        if active_sound_ids is None:
+            logger.info("no active mode for user_id=%s, skip", user_id)
+            return None
+
+        if sound_id is None or sound_id not in active_sound_ids:
+            logger.info(
+                "sound not in active mode (user=%s, id=%s, %s/%s, ondevice_vibrated=%s), skip",
+                user_id, sound_id, payload.sound_category, payload.sound_name, payload.ondevice_vibrated,
+            )
+            return None
 
     location = None  # 역지오코딩(location_service) 보류 — payload 좌표는 아직 사용 안 함
 
@@ -116,7 +127,7 @@ async def handle_detection(
 
     await detection_handler.broadcast_detection(user_id, notification)
 
-    # 하드웨어 진동 명령 — do_not_disturb·모드 매칭은 위에서 이미 통과했다.
+    # 하드웨어 진동 명령 — do_not_disturb·모드 매칭(또는 긴급 우회)은 위에서 이미 통과했다.
     # 기기 WS 가 끊겨 있으면 드롭 (진동은 실시간 경보라 큐잉하지 않음). 연결은 MAC 단위.
     # 온디바이스가 이미 진동한 감지에는 보내지 않는다 — 같은 소리에 두 번 울린다.
     if not payload.ondevice_vibrated:
