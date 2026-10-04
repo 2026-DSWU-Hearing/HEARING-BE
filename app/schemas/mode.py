@@ -15,7 +15,13 @@ class ModeListResponse(BaseModel):
     modes: list[ModeListItem]
 
 
-class ModeDetailSoundItem(BaseModel):
+class ModeSoundItem(BaseModel):
+    """모드 응답(상세·생성·수정·소리 교체)에 공통으로 쓰는 소리 1건.
+
+    생성/수정 응답에도 category·is_active 를 내려줘야 FE 가 이전 캐시로 is_active 를
+    추측하지 않고 응답을 그대로 캐시에 넣을 수 있다.
+    """
+
     sound_id: int
     name: str
     category: str  # 카테고리명(문자열) — 프론트 상세 화면 계약
@@ -27,7 +33,7 @@ class ModeDetailResponse(BaseModel):
     name: str
     icon: str
     is_active: bool
-    sounds: list[ModeDetailSoundItem]
+    sounds: list[ModeSoundItem]
 
 
 # --- 프론트(home) 쓰기 요청/응답 계약 ---
@@ -36,11 +42,6 @@ class ModeDetailResponse(BaseModel):
 class ModeSoundInput(BaseModel):
     sound_id: int
     name: str | None = None  # 프론트가 보내지만 서버는 sound_id만 사용
-
-
-class ModeSoundItem(BaseModel):
-    sound_id: int
-    name: str
 
 
 class ModeWriteRequest(BaseModel):

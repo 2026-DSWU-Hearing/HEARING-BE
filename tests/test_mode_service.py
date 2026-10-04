@@ -1,8 +1,7 @@
 """mode_service 유닛테스트 — 실 세션(db fixture)으로 쿼리·관계·flush 를 검증한다.
 
-핵심: update_mode_sounds/_set_sound_links 의 flush 회귀
-(SQLAlchemy UoW 는 flush 때 INSERT 를 DELETE 보다 먼저 처리하므로, clear() 후 flush 없이
-동일 sound_id 를 재추가하면 uq_mode_sound 위반이 난다 — 엔진 무관하게 SQLite 에서도 재현).
+핵심: update_mode/update_mode_sounds(_set_sound_links) 가 바뀐 부분만 반영하는지
+— 유지되는 소리의 is_active 가 살아남고, 겹치는 sound_id 로 uq_mode_sound 충돌이 없어야 한다.
 """
 
 import pytest
@@ -25,6 +24,14 @@ async def _seed(db) -> None:
 
 def _sound_ids(mode) -> set[int]:
     return {link.sound_id for link in mode.sound_links}
+
+
+def _link(mode, sound_id: int):
+    return next(link for link in mode.sound_links if link.sound_id == sound_id)
+
+
+def _active_map(mode) -> dict[int, bool]:
+    return {link.sound_id: link.is_active for link in mode.sound_links}
 
 
 @pytest.mark.asyncio
@@ -69,19 +76,74 @@ async def test_update_mode_replaces_name_icon_sounds(db):
 
 
 @pytest.mark.asyncio
-async def test_update_mode_sounds_overlapping_ids_no_conflict(db):
-    """flush 회귀 가드: 겹치는 sound_id 를 유지한 채 목록을 바꿔도 uq_mode_sound 충돌이 없어야 한다.
-    _set_sound_links 의 `await db.flush()` 가 빠지면 여기서 IntegrityError 가 난다."""
+async def test_update_mode_sounds_keeps_existing_links(db):
+    """겹치는 sound_id 는 기존 링크를 그대로 둔다(재삽입 없음 → uq_mode_sound 충돌도 없음)."""
     await _seed(db)
     mode = await mode_service.create_mode(db, OWNER, name="외출", icon="walk", sound_ids=[1, 2])
+    link_1_id = _link(mode, 1).id
 
-    # 1 은 유지(재삽입), 2 제거, 3 추가 — DELETE 전에 INSERT 되면 sound_id=1 에서 충돌
+    # 1 유지, 2 제거, 3 추가
     updated = await mode_service.update_mode_sounds(db, OWNER, mode.id, sound_ids=[1, 3])
     assert _sound_ids(updated) == {1, 3}
+    assert _link(updated, 1).id == link_1_id  # 같은 행 — DELETE/INSERT 되지 않았다
 
-    # 완전히 동일한 집합으로 재설정 — 전부 재삽입이라 가장 가혹한 케이스
+    # 완전히 동일한 집합으로 재설정 — 아무것도 바뀌지 않아야 한다
     again = await mode_service.update_mode_sounds(db, OWNER, mode.id, sound_ids=[1, 3])
     assert _sound_ids(again) == {1, 3}
+    assert _link(again, 1).id == link_1_id
+
+
+# --- 꺼둔 소리(is_active=False)가 모드 수정 뒤에도 꺼진 채 남는지 (FE 버그리포트) -------------
+# 전부 지우고 새로 만들면 ModeSound.is_active 기본값 True 로 되살아나, 사용자가 꺼둔 소리의
+# 알림·진동이 다시 온다. 이름만 고쳐도 재현됐다.
+
+
+@pytest.mark.asyncio
+async def test_update_mode_keeps_inactive_sound_off(db):
+    """[1, 2] 생성 → 1 끔 → update_mode([1, 3]) → 1 꺼짐 유지 / 3 켜짐 / 2 없음."""
+    await _seed(db)
+    mode = await mode_service.create_mode(db, OWNER, name="외출", icon="walk", sound_ids=[1, 2])
+    await mode_service.set_mode_sound_active(db, OWNER, mode.id, 1, False)
+
+    updated = await mode_service.update_mode(db, OWNER, mode.id, name="외출", icon="walk", sound_ids=[1, 3])
+
+    assert _active_map(updated) == {1: False, 3: True}
+
+
+@pytest.mark.asyncio
+async def test_update_mode_sounds_keeps_inactive_sound_off(db):
+    """같은 시나리오를 update_mode_sounds(PUT /modes/{id}/sounds)로."""
+    await _seed(db)
+    mode = await mode_service.create_mode(db, OWNER, name="외출", icon="walk", sound_ids=[1, 2])
+    await mode_service.set_mode_sound_active(db, OWNER, mode.id, 1, False)
+
+    updated = await mode_service.update_mode_sounds(db, OWNER, mode.id, sound_ids=[1, 3])
+
+    assert _active_map(updated) == {1: False, 3: True}
+
+
+@pytest.mark.asyncio
+async def test_update_mode_name_only_keeps_inactive_sound_off(db):
+    """소리 목록을 그대로 다시 보내며 이름만 고쳐도(FE 재현 케이스) 꺼짐이 유지된다."""
+    await _seed(db)
+    mode = await mode_service.create_mode(db, OWNER, name="외출", icon="walk", sound_ids=[1, 2])
+    await mode_service.set_mode_sound_active(db, OWNER, mode.id, 2, False)
+
+    updated = await mode_service.update_mode(db, OWNER, mode.id, name="산책", icon="walk", sound_ids=[1, 2])
+
+    assert updated.name == "산책"
+    assert _active_map(updated) == {1: True, 2: False}
+
+
+@pytest.mark.asyncio
+async def test_update_mode_sounds_dedupes_ids(db):
+    """같은 sound_id 가 두 번 와도 링크는 하나(uq_mode_sound 위반으로 500 나지 않게)."""
+    await _seed(db)
+    mode = await mode_service.create_mode(db, OWNER, name="외출", icon="walk", sound_ids=[1])
+
+    updated = await mode_service.update_mode_sounds(db, OWNER, mode.id, sound_ids=[2, 3, 2])
+
+    assert sorted(link.sound_id for link in updated.sound_links) == [2, 3]
 
 
 @pytest.mark.asyncio

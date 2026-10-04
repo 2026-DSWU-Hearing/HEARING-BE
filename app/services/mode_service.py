@@ -95,8 +95,21 @@ async def _get_owned_mode(db: AsyncSession, user_id: int, mode_id: int) -> Mode:
 
 
 async def _set_sound_links(db: AsyncSession, mode: Mode, sound_ids: list[int]) -> None:
-    """모드의 소리 링크를 sound_ids 로 통째 교체."""
-    mode.sound_links.clear()
-    await db.flush()  # 기존 링크 DELETE를 먼저 반영 → 동일 sound_id 재추가 시 uq_mode_sound 충돌 방지
-    for sid in sound_ids:
-        mode.sound_links.append(ModeSound(sound_id=sid))
+    """모드의 소리 목록을 sound_ids 에 맞춘다 — 바뀐 부분만 반영.
+
+    전부 지우고 새로 만들면 사용자가 꺼둔 소리(ModeSound.is_active=False)가 기본값 True 로
+    되살아난다(FE 버그리포트: 이름만 고쳐도 꺼둔 소리가 다시 켜짐). 그래서
+      - 이미 있던 sound_id → 기존 링크를 그대로 둔다(is_active 유지, DELETE/INSERT 없음)
+      - 요청에서 빠진 sound_id → 링크 제거(delete-orphan)
+      - 새 sound_id → 링크 추가(기본 on)
+    유지되는 링크를 재삽입하지 않으므로 uq_mode_sound 충돌도 생기지 않는다.
+    """
+    wanted = list(dict.fromkeys(sound_ids))  # 중복 제거(같은 id 두 번이면 uq 위반), 순서 유지
+    existing = {link.sound_id: link for link in mode.sound_links}
+
+    for sid, link in existing.items():
+        if sid not in wanted:
+            mode.sound_links.remove(link)
+    for sid in wanted:
+        if sid not in existing:
+            mode.sound_links.append(ModeSound(sound_id=sid))

@@ -7,7 +7,6 @@ from app.models.mode import Mode
 from app.schemas.mode import (
     ModeActivateResponse,
     ModeDetailResponse,
-    ModeDetailSoundItem,
     ModeIconItem,
     ModeIconListResponse,
     ModeListItem,
@@ -25,13 +24,21 @@ from app.services import mode_service
 router = APIRouter()
 
 
+def _sound_items(mode: Mode) -> list[ModeSoundItem]:
+    """ModeSound 링크 → 응답 항목. sound/category 는 joined 로딩이라 추가 쿼리 없음."""
+    return [
+        ModeSoundItem(
+            sound_id=link.sound.id,
+            name=link.sound.name,
+            category=link.sound.category.name,
+            is_active=link.is_active,
+        )
+        for link in mode.sound_links
+    ]
+
+
 def _write_response(mode: Mode) -> ModeWriteResponse:
-    return ModeWriteResponse(
-        mode_id=mode.id,
-        name=mode.name,
-        icon=mode.icon,
-        sounds=[ModeSoundItem(sound_id=s.id, name=s.name) for s in mode.sounds],
-    )
+    return ModeWriteResponse(mode_id=mode.id, name=mode.name, icon=mode.icon, sounds=_sound_items(mode))
 
 
 @router.get("", response_model=ModeListResponse)
@@ -68,15 +75,7 @@ async def get_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db
         name=mode.name,
         icon=mode.icon,
         is_active=mode.is_active,
-        sounds=[
-            ModeDetailSoundItem(
-                sound_id=link.sound.id,
-                name=link.sound.name,
-                category=link.sound.category.name,
-                is_active=link.is_active,
-            )
-            for link in mode.sound_links
-        ],
+        sounds=_sound_items(mode),
     )
 
 
@@ -125,10 +124,7 @@ async def update_mode_sounds(mode_id: int, payload: ModeSoundsUpdateRequest, use
         mode_id,
         sound_ids=[s.sound_id for s in payload.sounds],
     )
-    return ModeSoundsResponse(
-        mode_id=mode.id,
-        sounds=[ModeSoundItem(sound_id=s.id, name=s.name) for s in mode.sounds],
-    )
+    return ModeSoundsResponse(mode_id=mode.id, sounds=_sound_items(mode))
 
 
 @router.patch("/{mode_id}/sounds/{sound_id}", response_model=ModeSoundActiveResponse)
