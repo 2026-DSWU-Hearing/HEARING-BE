@@ -38,6 +38,7 @@ async def test_handle_detection_removes_only_failed_fcm_token(monkeypatch):
     user = SimpleNamespace(
         id=1,
         do_not_disturb=False,
+        emergency_alert_enabled=False,  # 모드 필터 경로를 그대로 타게(긴급 우회 없이) 둔다
         push_enabled=True,
         fcm_token="expired-token",
         haptic_strength=50,
@@ -93,6 +94,7 @@ async def test_handle_detection_skips_only_fcm_when_push_disabled(monkeypatch):
     user = SimpleNamespace(
         id=1,
         do_not_disturb=False,
+        emergency_alert_enabled=False,  # 모드 필터 경로를 그대로 타게(긴급 우회 없이) 둔다
         push_enabled=False,
         fcm_token="valid-token",
         haptic_strength=50,

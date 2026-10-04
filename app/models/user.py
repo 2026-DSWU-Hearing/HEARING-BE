@@ -26,8 +26,9 @@ class User(Base, TimestampMixin):
         nullable=False,
     )
 
-    # "긴급 소리 알림 받기" — 넥밴드 온디바이스 AI 의 on/off. 꺼도 AI 서버 → 백엔드 경로의
-    # 알림은 그대로다(꺼지는 건 기기 내 선판정뿐). 기본값은 펌웨어 기본값과 같은 true.
+    # "긴급 소리 알림 받기" — 켜면 넥밴드 온디바이스 AI 동작 + 긴급 카테고리는 모드 필터 없이 알림.
+    # 꺼면 기기 내 선판정이 멈추고 긴급도 다른 소리처럼 활성 모드에 있어야 알림이 간다.
+    # 기본값은 펌웨어 기본값과 같은 true.
     emergency_alert_enabled: Mapped[bool] = mapped_column(
         Boolean,
         default=True,

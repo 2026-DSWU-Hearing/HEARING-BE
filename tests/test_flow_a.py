@@ -21,20 +21,37 @@ from app.services.device_service import THE_DEVICE_ID
 
 USER_ID = 1
 
-# 둘 다 카탈로그의 '긴급' 카테고리 실제 소리 — 활성 모드에 넣은 것만 알림이 남아야 한다.
-MATCHED = "사이렌"
-UNMATCHED = "경보음"
+# 카탈로그 실제 소리. 긴급 알림 토글이 켜져 있으면(기본값) 긴급 카테고리는 모드 필터를 건너뛰므로,
+# "모드 밖이라 무시"를 보려면 생활음 쪽 소리를 써야 한다.
+MATCHED = "사이렌"  # 긴급, 활성 모드에 포함
+UNMATCHED_EMERGENCY = "경보음"  # 긴급, 활성 모드에 없음 → 토글 ON 이면 우회 저장
+UNMATCHED_DAILY = ("생활음", "가전제품")  # 생활음, 활성 모드에 없음 → 항상 무시
 
 
 def _auth(source: str = "user", user_id: int = USER_ID) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user_id, source=source)}"}
 
 
-async def _seed(session_factory, *, do_not_disturb: bool = False, active_user_id: int | None = USER_ID) -> None:
+async def _seed(
+    session_factory,
+    *,
+    do_not_disturb: bool = False,
+    emergency_alert_enabled: bool = True,
+    active_user_id: int | None = USER_ID,
+) -> None:
     """유저 + 물리 기기 행. active_user_id=None 이면 '아무도 연결 안 한' 상태.
     소리 카탈로그는 conftest 가 마이그레이션으로 깔아둔 실물을 쓴다(여기서 만들지 않는다)."""
     async with session_factory() as db:
-        db.add(User(id=USER_ID, email="u@t.local", nickname="u", terms_agreed=True, do_not_disturb=do_not_disturb))
+        db.add(
+            User(
+                id=USER_ID,
+                email="u@t.local",
+                nickname="u",
+                terms_agreed=True,
+                do_not_disturb=do_not_disturb,
+                emergency_alert_enabled=emergency_alert_enabled,
+            )
+        )
         await db.flush()  # devices.active_user_id FK — 유저가 먼저 들어가야 한다
         db.add(Device(id=THE_DEVICE_ID, mac_address=settings.DEVICE_MAC_ADDRESS, active_user_id=active_user_id))
         await db.commit()
@@ -58,9 +75,9 @@ async def _make_active_mode_with_siren(client, session_factory) -> None:
     assert r.status_code == 200 and r.json()["is_active"] is True, r.text
 
 
-def _detection(sound_name: str) -> dict:
+def _detection(sound_name: str, category: str = "긴급") -> dict:
     return {
-        "sound_category": "긴급",
+        "sound_category": category,
         "sound_name": sound_name,
         "confidence": 0.95,
         "detected_at": datetime.now(timezone.utc).isoformat(),
@@ -76,8 +93,10 @@ async def test_matched_detection_is_saved_and_unmatched_ignored(api_client):
     # 매칭: 사이렌 → 이름으로 sound_id 해석 → 활성 모드에 포함 → 알림 저장
     r = await client.post(f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(MATCHED))
     assert r.status_code == 200, r.text
-    # 비매칭: 경보음 → 이름으로 해석은 되지만 활성 모드에 없음 → 무시
-    r = await client.post(f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(UNMATCHED))
+    # 비매칭: 가전제품(생활음) → 이름으로 해석은 되지만 활성 모드에 없음 → 무시
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(*UNMATCHED_DAILY)
+    )
     assert r.status_code == 200, r.text
 
     r = await client.get("/notifications", headers=_auth())
@@ -143,11 +162,11 @@ async def test_release_keeps_history_and_stops_future_alerts(api_client):
 
 # --- 온디바이스 긴급 판정(ondevice_vibrated) ---------------------------------------
 # 넥밴드의 온디바이스 AI 가 몇몇 소리를 먼저 긴급으로 판정해 스스로 진동한다. 그 감지는
-# 웹앱 사후 알림(저장·푸시)만 하고 진동 명령은 다시 보내지 않는다. 모드 필터는 그대로 적용한다.
+# 웹앱 사후 알림(저장·푸시)만 하고 진동 명령은 다시 보내지 않는다.
 
 
-def _ondevice_detection(sound_name: str) -> dict:
-    return {**_detection(sound_name), "ondevice_vibrated": True}
+def _ondevice_detection(sound_name: str, category: str = "긴급") -> dict:
+    return {**_detection(sound_name, category), "ondevice_vibrated": True}
 
 
 @pytest.fixture
@@ -185,14 +204,105 @@ async def test_ondevice_detection_is_saved_but_does_not_vibrate_again(api_client
 
 
 @pytest.mark.asyncio
-async def test_ondevice_detection_still_goes_through_mode_filter(api_client, vibrations):
-    """모드 밖 소리도 기록만 남기는 안은 보류 — 지금은 온디바이스 판정이어도 필터를 똑같이 탄다."""
+async def test_ondevice_detection_outside_mode_is_still_recorded(api_client, vibrations):
+    """실기기 테스트(10/3): 넥밴드는 모드를 모르고 긴급이면 진동한다. 백엔드가 모드 밖이라고 버리면
+    사용자는 진동만 받고 앱에 기록이 없어 무슨 소리였는지 모른다 → 긴급 알림 ON 이면 기록을 남긴다."""
     client, session_factory = api_client
     await _seed(session_factory)
     await _make_active_mode_with_siren(client, session_factory)  # 경보음은 모드에 없다
 
     r = await client.post(
-        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_ondevice_detection(UNMATCHED)
+        f"/devices/{THE_DEVICE_ID}/detections",
+        headers=_auth("ai-server"),
+        json=_ondevice_detection(UNMATCHED_EMERGENCY),
+    )
+    assert r.status_code == 200, r.text
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["sound_name"] for item in items] == [UNMATCHED_EMERGENCY]
+    assert vibrations == []  # 이미 울렸으니 진동 명령은 여전히 생략
+
+
+# --- 긴급 소리 알림 받기(emergency_alert_enabled)의 모드 필터 우회 -----------------------
+# 토글이 켜져 있으면 긴급 카테고리는 활성 모드에 없어도(모드가 아예 없어도) 알림이 간다.
+# 온디바이스가 안 다루는 긴급 소리도 똑같이 — "긴급은 다 온다"가 토글의 뜻이다.
+
+
+@pytest.mark.asyncio
+async def test_emergency_bypasses_mode_filter_and_vibrates(api_client, vibrations):
+    """백엔드가 판단한(ondevice_vibrated 없음) 모드 밖 긴급 소리는 저장 + 진동 명령까지 나간다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(UNMATCHED_EMERGENCY)
+    )
+    assert r.status_code == 200, r.text
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["sound_name"] for item in items] == [UNMATCHED_EMERGENCY]
+    assert [v["sound_name"] for v in vibrations] == [UNMATCHED_EMERGENCY]
+
+
+@pytest.mark.asyncio
+async def test_emergency_bypass_works_without_any_active_mode(api_client, vibrations):
+    """활성 모드가 하나도 없어도 긴급 소리는 알림이 가야 한다(None 분기도 우회 안쪽)."""
+    client, session_factory = api_client
+    await _seed(session_factory)  # 모드를 만들지 않는다
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(MATCHED)
+    )
+    assert r.status_code == 200, r.text
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["sound_name"] for item in items] == [MATCHED]
+    assert [v["sound_name"] for v in vibrations] == [MATCHED]
+
+
+@pytest.mark.asyncio
+async def test_emergency_bypass_does_not_cover_other_categories(api_client, vibrations):
+    """우회는 긴급 카테고리만 — 생활음은 토글이 켜져 있어도 모드 필터를 그대로 탄다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(*UNMATCHED_DAILY)
+    )
+    assert r.status_code == 200, r.text
+
+    assert (await client.get("/notifications", headers=_auth())).json()["items"] == []
+    assert vibrations == []
+
+
+@pytest.mark.asyncio
+async def test_emergency_toggle_off_restores_mode_filter(api_client, vibrations):
+    """토글 OFF 면 긴급도 다른 소리처럼 활성 모드에 있어야 알림이 간다."""
+    client, session_factory = api_client
+    await _seed(session_factory, emergency_alert_enabled=False)
+    await _make_active_mode_with_siren(client, session_factory)
+    url = f"/devices/{THE_DEVICE_ID}/detections"
+
+    r = await client.post(url, headers=_auth("ai-server"), json=_detection(UNMATCHED_EMERGENCY))
+    assert r.status_code == 200, r.text
+    r = await client.post(url, headers=_auth("ai-server"), json=_detection(MATCHED))
+    assert r.status_code == 200, r.text
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["sound_name"] for item in items] == [MATCHED]
+    assert [v["sound_name"] for v in vibrations] == [MATCHED]
+
+
+@pytest.mark.asyncio
+async def test_do_not_disturb_beats_emergency_bypass(api_client, vibrations):
+    """방해금지의 '완전 차단'은 긴급 우회보다 앞선다."""
+    client, session_factory = api_client
+    await _seed(session_factory, do_not_disturb=True)
+
+    r = await client.post(
+        f"/devices/{THE_DEVICE_ID}/detections", headers=_auth("ai-server"), json=_detection(MATCHED)
     )
     assert r.status_code == 200, r.text
 
