@@ -1,0 +1,61 @@
+# 운영(EC2) 스택 — nginx / backend / ai / redis. PostgreSQL 은 RDS 라 여기 없다.
+#
+# 서버 디렉터리 배치(이 파일의 상대 경로가 전부 이 배치를 전제한다):
+#   ~/hearing/HEARING-BE/      ← 이 레포 (deploy/ 가 여기)
+#   ~/hearing/HEARING-MODEL/   ← AI 서버 레포, 형제 디렉터리
+#
+# 실행은 항상 이 파일을 지정한다:  docker compose -f deploy/docker-compose.prod.yml <명령>
+# 변수(API_DOMAIN)는 이 파일 옆의 deploy/.env 에서 읽는다(example.env 참고). 절차는 README.md.
+name: hearing
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # nginx 이미지가 기동 때 templates/*.template 의 ${API_DOMAIN} 을 치환해 conf.d 에 쓴다.
+      API_DOMAIN: ${API_DOMAIN:?deploy/.env 에 API_DOMAIN 을 설정하세요}
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro   # 호스트 certbot 이 발급·갱신
+    depends_on:
+      - backend
+      - ai
+    restart: unless-stopped
+
+  backend:
+    build: ..
+    env_file: ../.env   # 운영값(ENVIRONMENT=prod, RDS URL, JWT_SECRET ...). 커밋 금지.
+    volumes:
+      # FCM 서비스 계정 키. 호스트에 파일이 없으면 도커가 그 자리에 디렉터리를 만들어 버리니
+      # 반드시 먼저 scp 로 올려 둔다(README 5단계).
+      - ../firebase-credentials.json:/app/firebase-credentials.json:ro
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+
+  ai:
+    build:
+      context: ../../HEARING-MODEL
+      # MODEL 레포에 Dockerfile 이 생기면 아래 줄을 지운다(기본값 = 컨텍스트의 Dockerfile).
+      dockerfile: ../HEARING-BE/deploy/ai-server.Dockerfile
+    env_file: ../../HEARING-MODEL/.env   # BACKEND_URL=http://backend:8000, JWT_SECRET(백엔드와 동일), DEVICE_ID=1
+    volumes:
+      - tfhub_cache:/cache/tfhub   # YAMNet 다운로드 캐시 — 재시작마다 다시 받지 않게
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # 게스트 rate limit·refresh 토큰 블랙리스트 등 TTL 임시 데이터뿐이라 볼륨 없음(로컬 compose 와 동일).
+    restart: unless-stopped
+
+volumes:
+  tfhub_cache:

@@ -170,6 +170,8 @@ app/
 alembic/        # migrations (schema + seeded sound catalog)
 scripts/        # standalone smoke tests, device-token minting
 tests/          # pytest unit tests
+deploy/         # production stack: compose (nginx/backend/ai/redis), nginx template, runbook
+Dockerfile      # backend image (built by deploy/docker-compose.prod.yml)
 ```
 
 ## Trust model & deployment notes
@@ -185,3 +187,9 @@ Known, deliberate limitations for the capstone scope — revisit before any publ
   access tokens stay valid until they expire (max 60 min).
 - Deploy checklist: `ENVIRONMENT=prod` (boot fails if `DEV_AUTH_BYPASS` is still on) ·
   strong `JWT_SECRET` · real `GOOGLE_CLIENT_ID` · production CORS origins.
+
+## Deployment
+
+AWS: one EC2 running Docker Compose (nginx + backend + AI server + Redis), PostgreSQL on RDS,
+the PWA on S3 behind CloudFront. Step-by-step runbook, compose file and nginx template live in
+[`deploy/`](deploy/README.md).
