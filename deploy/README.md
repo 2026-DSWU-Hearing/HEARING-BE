@@ -7,9 +7,8 @@ PostgreSQL 은 RDS 를 쓴다. 이 디렉터리의 파일:
 | --- | --- |
 | `docker-compose.prod.yml` | 운영 스택 정의. 항상 `-f deploy/docker-compose.prod.yml` 로 지정 |
 | `nginx/default.conf.template` | TLS 종단 + WebSocket 프록시. `${API_DOMAIN}` 만 기동 때 치환 |
-| `ai-server.Dockerfile` | AI 서버 이미지. MODEL 레포에 `Dockerfile` 이 생기면 그쪽을 쓴다 |
 | `example.env` | compose 변수(`API_DOMAIN`). `deploy/.env` 로 복사 |
-| `../Dockerfile` | 백엔드 이미지 |
+| `../Dockerfile` | 백엔드 이미지. AI 서버 이미지는 MODEL 레포 루트의 `Dockerfile` |
 
 ## 전제
 

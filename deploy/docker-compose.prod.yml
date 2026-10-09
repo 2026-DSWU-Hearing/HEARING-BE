@@ -44,12 +44,17 @@ services:
 
   ai:
     build:
-      context: ../../HEARING-MODEL
-      # MODEL 레포에 Dockerfile 이 생기면 아래 줄을 지운다(기본값 = 컨텍스트의 Dockerfile).
-      dockerfile: ../HEARING-BE/deploy/ai-server.Dockerfile
+      context: ../../HEARING-MODEL   # MODEL 레포 루트의 Dockerfile 로 빌드 (Python 3.11, run.py 기동, /health 제공)
     env_file: ../../HEARING-MODEL/.env   # BACKEND_URL=http://backend:8000, JWT_SECRET(백엔드와 동일), DEVICE_ID=1
     volumes:
-      - tfhub_cache:/cache/tfhub   # YAMNet 다운로드 캐시 — 재시작마다 다시 받지 않게
+      # YAMNet 다운로드 캐시 — 재시작마다 다시 받지 않게. 경로는 MODEL Dockerfile 의 TFHUB_CACHE_DIR 와 같아야 한다.
+      - tfhub_cache:/app/.cache/tfhub
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s   # YAMNet 로드에 시간이 걸린다
+      retries: 3
     restart: unless-stopped
 
   redis:
