@@ -126,6 +126,8 @@ async def _seed_demo_notifications(db: AsyncSession, user_id: int) -> None:
                 source="ai-server",
                 confidence=0.95,
                 detected_at=now - timedelta(minutes=5 * i),
+                direction="UNKNOWN",
+                ondevice_vibrated=False,
                 is_read=False,
             )
         )

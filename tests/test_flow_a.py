@@ -201,6 +201,27 @@ async def test_ondevice_detection_is_saved_but_does_not_vibrate_again(api_client
 
     items = (await client.get("/notifications", headers=_auth())).json()["items"]
     assert [item["sound_name"] for item in items] == [MATCHED, MATCHED]  # 기록은 둘 다 남는다
+    # 최신순이라 [백엔드 판단, 온디바이스] 순. FE 가 "넥밴드가 먼저 감지"를 구분 표시할 수 있어야 한다.
+    assert [item["ondevice_vibrated"] for item in items] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_detection_direction_is_recorded_and_exposed(api_client, vibrations):
+    """방향은 진동 명령에만 실리고 DB 엔 안 남아 앱이 몰랐다 — 이제 목록에도 나온다.
+    방향을 안 보내는 프로듀서는 UNKNOWN 으로 기록된다."""
+    client, session_factory = api_client
+    await _seed(session_factory)
+    await _make_active_mode_with_siren(client, session_factory)
+    url = f"/devices/{THE_DEVICE_ID}/detections"
+
+    r = await client.post(url, headers=_auth("ai-server"), json={**_detection(MATCHED), "direction": "LEFT"})
+    assert r.status_code == 200, r.text
+    r = await client.post(url, headers=_auth("ai-server"), json=_detection(MATCHED))
+    assert r.status_code == 200, r.text
+
+    items = (await client.get("/notifications", headers=_auth())).json()["items"]
+    assert [item["direction"] for item in items] == ["UNKNOWN", "LEFT"]
+    assert [v["direction"] for v in vibrations] == ["LEFT", "UNKNOWN"]
 
 
 @pytest.mark.asyncio

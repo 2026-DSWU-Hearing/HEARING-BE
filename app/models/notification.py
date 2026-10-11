@@ -39,5 +39,12 @@ class Notification(Base, TimestampMixin):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     location: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 소리가 들린 방향(FRONT/BACK/LEFT/RIGHT/UNKNOWN). 진동 명령엔 원래 실려 나가던 값인데
+    # DB 에 안 남겨 기기는 알고 앱은 모르는 비대칭이 있었다 — 알림 목록·푸시에 표시한다.
+    # 널 대신 'UNKNOWN': FE 가 null 분기를 하나 더 들고 다니지 않게.
+    direction: Mapped[str] = mapped_column(String(10), nullable=False, default="UNKNOWN", server_default="UNKNOWN")
+    # 넥밴드 온디바이스 AI 가 먼저 긴급 판정해 **이미 진동한** 감지인지. 목록에서
+    # "넥밴드가 먼저 감지"로 구분 표시하고, 백엔드는 이 값이면 진동 명령을 생략한다.
+    ondevice_vibrated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
