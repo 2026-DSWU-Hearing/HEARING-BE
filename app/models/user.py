@@ -42,3 +42,7 @@ class User(Base, TimestampMixin):
     google_sub: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
 
     terms_agreed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # 위치정보 이용 동의. 양방향 소통 모달·온보딩에서 받는다. 동의 여부의 정본은 서버다 —
+    # localStorage 에 두면 기기를 바꾸거나 캐시를 지우면 사라져 모달이 다시 뜬다.
+    # 게스트도 False: 실제로 동의한 것만 True (데모 동선에서 모달이 한 번 뜬다).
+    location_agreed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")

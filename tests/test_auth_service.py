@@ -84,6 +84,7 @@ async def test_guest_login_creates_user_and_seeds_demo_data(db):
     assert user.nickname == "게스트"
     assert user.email.endswith("@demo.hearing.local")
     assert user.terms_agreed is True
+    assert user.location_agreed is False  # 실제로 동의한 것만 True — 게스트도 모달을 한 번 본다
     assert user.push_enabled is False
     await _assert_login_left_devices_alone(db, user.id)
     assert await _count(db, Mode) == len(auth_service._DEFAULT_MODES)
