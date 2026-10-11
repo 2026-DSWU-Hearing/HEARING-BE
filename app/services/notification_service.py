@@ -105,6 +105,8 @@ async def handle_detection(
         confidence=payload.confidence,
         location=location,
         detected_at=payload.detected_at,
+        direction=payload.direction,
+        ondevice_vibrated=payload.ondevice_vibrated,
         is_read=False,
     )
     db.add(notification)
@@ -136,7 +138,7 @@ async def handle_detection(
             strength=user.haptic_strength,
             sound_name=notification.sound_name,
             sound_category=notification.sound_category,
-            direction=payload.direction,
+            direction=notification.direction,
         )
     return notification
 

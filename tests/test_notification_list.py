@@ -34,6 +34,8 @@ def _notification(user_id: int, index: int, *, detected_at: datetime) -> Notific
         confidence=0.9,
         location=None,
         detected_at=detected_at,
+        direction="UNKNOWN",
+        ondevice_vibrated=False,
         is_read=False,
     )
 

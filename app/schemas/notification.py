@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.device import Direction
+
 
 class NotificationItem(BaseModel):
     """감지 하나의 표현. WS `detection` 메시지의 data 와 GET /notifications 의 items 가
@@ -29,6 +31,8 @@ class NotificationItem(BaseModel):
     confidence: float | None
     location: str | None
     detected_at: datetime
+    direction: Direction
+    ondevice_vibrated: bool  # 넥밴드가 먼저 울린 감지 — FE 가 구분 표시
 
 
 class NotificationListResponse(BaseModel):
@@ -67,4 +71,6 @@ class NotificationResponse(BaseModel):
     confidence: float | None
     location: str | None
     detected_at: datetime
+    direction: Direction
+    ondevice_vibrated: bool
     is_read: bool

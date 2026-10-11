@@ -170,6 +170,8 @@ async def test_broadcast_payload_matches_list_item_schema(monkeypatch):
         confidence=0.95,
         location=None,
         detected_at=datetime(2026, 8, 22, 3, 4, 5, tzinfo=timezone.utc),
+        direction="LEFT",
+        ondevice_vibrated=True,
     )
 
     await detection_handler.broadcast_detection(42, notification)
@@ -182,6 +184,8 @@ async def test_broadcast_payload_matches_list_item_schema(monkeypatch):
     data = payload["data"]
     assert set(data) == set(NotificationItem.model_fields)
     assert isinstance(data["confidence"], float)
+    assert data["direction"] == "LEFT"
+    assert data["ondevice_vibrated"] is True
     # 오프셋 없는 문자열은 브라우저가 UTC 로도 로컬로도 해석해 9시간 어긋난다.
     assert datetime.fromisoformat(data["detected_at"]).tzinfo is not None
     # WS 는 JSON 으로 나가므로 직렬화 가능한 값만 있어야 한다(datetime 객체가 남으면 터진다).
