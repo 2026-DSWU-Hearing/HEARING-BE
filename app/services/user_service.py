@@ -74,7 +74,10 @@ async def update_fcm_token(db: AsyncSession, user_id: int, payload: FcmTokenUpda
 
 async def update_agreement(db: AsyncSession, user_id: int, payload: AgreementUpdate) -> User:
     user = await get_or_404(db, User, user_id)
-    user.terms_agreed = payload.terms_agreed
+    if payload.terms_agreed is not None:
+        user.terms_agreed = payload.terms_agreed
+    if payload.location_agreed is not None:
+        user.location_agreed = payload.location_agreed
     await db.commit()
     await db.refresh(user)
     return user

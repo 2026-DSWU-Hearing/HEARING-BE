@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.user import HapticUpdate, UserUpdate
+from app.schemas.user import AgreementUpdate, HapticUpdate, UserUpdate
 
 
 @pytest.mark.parametrize("haptic_strength", [0, 50, 100])
@@ -39,3 +39,15 @@ def test_user_update_normalizes_disability_type(raw, expected):
 def test_user_update_rejects_unknown_disability_type(raw):
     with pytest.raises(ValidationError):
         UserUpdate(disability_type=raw)
+
+def test_agreement_update_accepts_location_only():
+    """양방향 소통 모달은 location_agreed 하나만 보낸다 — terms_agreed 를 다시 보내지 않아도 된다."""
+    payload = AgreementUpdate(location_agreed=True)
+
+    assert payload.location_agreed is True
+    assert payload.terms_agreed is None
+
+
+def test_agreement_update_rejects_empty_body():
+    with pytest.raises(ValidationError):
+        AgreementUpdate()
