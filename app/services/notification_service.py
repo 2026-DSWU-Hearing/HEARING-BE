@@ -4,7 +4,7 @@
   1) 활성 모드 조회 (Mode.is_active=True)
   2) 활성 모드의 ModeSound 목록과 감지된 소리 대조
      - sound_id 가 오면 그대로, AI서버처럼 한글 (category, name)만 오면 이름으로 해석
-  3) 매칭 안되면 → 무시 (DB 저장하지 않음)
+  3) 매칭 안되면 → 무시 (DB 저장하지 않음). 단 시연 대시보드용으로 WS 에 detection_filtered 만 알린다
   4) 매칭되면 → Notification 저장 + FCM push + WS broadcast + 기기 진동 명령
 
 온디바이스 긴급 판정(payload.ondevice_vibrated):
@@ -76,6 +76,7 @@ async def handle_detection(
         active_sound_ids = await _get_active_mode_sound_ids(db, user_id)
         if active_sound_ids is None:
             logger.info("no active mode for user_id=%s, skip", user_id)
+            await detection_handler.broadcast_filtered(user_id, payload, "no_active_mode")
             return None
 
         if sound_id is None or sound_id not in active_sound_ids:
@@ -83,6 +84,7 @@ async def handle_detection(
                 "sound not in active mode (user=%s, id=%s, %s/%s, ondevice_vibrated=%s), skip",
                 user_id, sound_id, payload.sound_category, payload.sound_name, payload.ondevice_vibrated,
             )
+            await detection_handler.broadcast_filtered(user_id, payload, "not_in_mode")
             return None
 
     location = None  # 역지오코딩(location_service) 보류 — payload 좌표는 아직 사용 안 함

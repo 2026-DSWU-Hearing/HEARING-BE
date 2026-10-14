@@ -38,6 +38,42 @@ PK 라 그대로 `POST /notifications/delete` 에 실어도 된다).
 메타데이터를 비워 두는 쪽을 택했으므로 클라이언트는 널을 받아 처리해야 한다(알림 화면은 이 값을
 표시하지 않는다). `detected_at` 은 항상 타임존 오프셋을 포함한다.
 
+## 시연 대시보드용 메시지 (같은 채널, 저장 없음)
+
+아래 두 메시지는 **발표용 대시보드**(HEARING-DASHBOARD)를 위해 같은 채널로 추가로 보낸다. 앱(HEARING-FE)의
+`useDetectionSocket` 은 `type === "detection"` 만 처리하고 나머지는 경고 로그 후 무시하므로 앱에는 영향이 없다.
+
+### `detection_filtered` — 활성 모드에 없어 버려진 감지
+
+`notification_service.handle_detection` 이 감지를 **버리기 직전**에 보낸다. DB 에 저장하지 않으므로
+`GET /notifications` 에는 나오지 않는다 (앱 알림 목록에 뜨면 안 되는 소리다). 방해금지로 버린 감지는 보내지 않는다.
+
+```json
+{
+  "type": "detection_filtered",
+  "data": {
+    "sound_name": "개 짖음",
+    "sound_category": "동물",
+    "confidence": 0.78,
+    "direction": "LEFT",
+    "ondevice_vibrated": false,
+    "detected_at": "2026-10-10T09:00:03+09:00",
+    "reason": "not_in_mode"
+  }
+}
+```
+
+- `reason`: `"no_active_mode"`(활성 모드 없음) | `"not_in_mode"`(활성 모드에 이 소리가 없음)
+- `data` 는 `DetectionCreate`(감지 페이로드)에서 그대로 꺼낸 값이라 `id` 가 없다.
+
+### `mode_changed` — 활성 모드 변경
+
+`PATCH /modes/{mode_id}/activate` 성공 직후 보낸다. 대시보드가 `GET /modes` 폴링을 기다리지 않고 현재 모드를 바꾸는 용도.
+
+```json
+{ "type": "mode_changed", "data": { "mode_id": 2, "name": "외출", "is_active": true } }
+```
+
 # WebSocket: 실시간 소리 감지 (livesound)
 
 ```text

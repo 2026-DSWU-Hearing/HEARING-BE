@@ -221,3 +221,142 @@ def test_detection_still_rejects_broken_confidence(bad):
             detected_at=datetime.now(timezone.utc),
         )
 
+
+
+def _filter_path_user():
+    """모드 필터 경로를 타는 사용자 (방해금지 off, 긴급 우회 off)."""
+    return SimpleNamespace(
+        id=1,
+        do_not_disturb=False,
+        emergency_alert_enabled=False,
+        push_enabled=False,
+        fcm_token=None,
+        haptic_strength=50,
+    )
+
+
+def _filter_path_payload(sound_id: int | None = 99) -> DetectionCreate:
+    return DetectionCreate(
+        sound_id=sound_id,
+        sound_name="개 짖음",
+        sound_category="동물",
+        confidence=0.78,
+        detected_at=datetime(2026, 10, 10, 0, 0, 3, tzinfo=timezone.utc),
+        direction="LEFT",
+        ondevice_vibrated=False,
+    )
+
+
+async def _run_filter_path(monkeypatch, *, active_sound_ids, user, payload):
+    """handle_detection 을 모드 필터 경로로 돌리고 (filtered 호출 목록, detection 호출 수, db) 를 돌려준다."""
+    database_session = FakeDatabaseSession()
+    filtered_calls = []
+    detection_calls = []
+
+    async def get_active_sound_ids(*args, **kwargs):
+        return active_sound_ids
+
+    async def get_user(*args, **kwargs):
+        return user
+
+    async def capture_filtered(user_id, sent_payload, reason):
+        filtered_calls.append((user_id, sent_payload, reason))
+
+    async def capture_detection(*args, **kwargs):
+        detection_calls.append(args)
+
+    monkeypatch.setattr(notification_service, "_get_active_mode_sound_ids", get_active_sound_ids)
+    monkeypatch.setattr(notification_service, "get_or_404", get_user)
+    monkeypatch.setattr(detection_handler, "broadcast_filtered", capture_filtered)
+    monkeypatch.setattr(detection_handler, "broadcast_detection", capture_detection)
+
+    result = await notification_service.handle_detection(
+        db=database_session, user_id=1, device=SimpleNamespace(id=1, mac_address="AA"), payload=payload, source="ai-server",
+    )
+    return result, filtered_calls, detection_calls, database_session
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_broadcasts_filtered_when_no_active_mode(monkeypatch):
+    """활성 모드가 없어 버릴 때: 저장·매칭 브로드캐스트 없이 detection_filtered(no_active_mode) 만 나간다."""
+    payload = _filter_path_payload()
+    result, filtered_calls, detection_calls, db = await _run_filter_path(
+        monkeypatch, active_sound_ids=None, user=_filter_path_user(), payload=payload
+    )
+
+    assert result is None
+    assert filtered_calls == [(1, payload, "no_active_mode")]
+    assert detection_calls == []
+    assert not hasattr(db, "added_instance")  # DB 저장 없음 — 알림 목록에 뜨면 안 된다
+    assert db.commit_count == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_broadcasts_filtered_when_sound_not_in_mode(monkeypatch):
+    """활성 모드는 있는데 이 소리가 없을 때: detection_filtered(not_in_mode). 시연에서 실제로 걸리는 경로."""
+    payload = _filter_path_payload(sound_id=99)
+    result, filtered_calls, detection_calls, db = await _run_filter_path(
+        monkeypatch, active_sound_ids={20}, user=_filter_path_user(), payload=payload
+    )
+
+    assert result is None
+    assert filtered_calls == [(1, payload, "not_in_mode")]
+    assert detection_calls == []
+    assert db.commit_count == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_detection_skips_filtered_broadcast_when_do_not_disturb(monkeypatch):
+    """방해금지는 완전 차단 — 걸러짐 알림도 보내지 않는다."""
+    user = _filter_path_user()
+    user.do_not_disturb = True
+    _, filtered_calls, detection_calls, _ = await _run_filter_path(
+        monkeypatch, active_sound_ids={20}, user=user, payload=_filter_path_payload()
+    )
+
+    assert filtered_calls == []
+    assert detection_calls == []
+
+
+@pytest.mark.asyncio
+async def test_broadcast_filtered_payload_shape(monkeypatch):
+    """대시보드 계약: type/reason 과 data 키 집합, detected_at 은 ISO 문자열."""
+    from app.websocket import manager as manager_module
+
+    sent = []
+
+    async def capture(user_id, message):
+        sent.append((user_id, message))
+
+    monkeypatch.setattr(manager_module.manager, "send_to_user", capture)
+
+    await detection_handler.broadcast_filtered(42, _filter_path_payload(), "not_in_mode")
+
+    assert len(sent) == 1
+    user_id, message = sent[0]
+    assert user_id == 42
+    assert message["type"] == "detection_filtered"
+    data = message["data"]
+    assert set(data) == {
+        "sound_name", "sound_category", "confidence", "direction", "ondevice_vibrated", "detected_at", "reason",
+    }
+    assert data["reason"] == "not_in_mode"
+    assert data["direction"] == "LEFT"
+    assert data["detected_at"] == "2026-10-10T00:00:03+00:00"
+    json.dumps(message)  # ws.send_json 가능해야 한다
+
+
+@pytest.mark.asyncio
+async def test_broadcast_mode_changed_payload_shape(monkeypatch):
+    from app.websocket import manager as manager_module
+
+    sent = []
+
+    async def capture(user_id, message):
+        sent.append((user_id, message))
+
+    monkeypatch.setattr(manager_module.manager, "send_to_user", capture)
+
+    await detection_handler.broadcast_mode_changed(7, SimpleNamespace(id=2, name="외출"))
+
+    assert sent == [(7, {"type": "mode_changed", "data": {"mode_id": 2, "name": "외출", "is_active": True}})]

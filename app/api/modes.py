@@ -20,6 +20,7 @@ from app.schemas.mode import (
     ModeWriteResponse,
 )
 from app.services import mode_service
+from app.websocket import detection_handler
 
 router = APIRouter()
 
@@ -113,6 +114,8 @@ async def delete_mode(mode_id: int, user_id: int = Depends(get_current_user_id),
 @router.patch("/{mode_id}/activate", response_model=ModeActivateResponse)
 async def activate_mode(mode_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     mode = await mode_service.activate_mode(db, user_id, mode_id)
+    # 시연 대시보드가 폴링 없이 즉시 현재 모드를 바꾸도록 detections WS 채널로 알린다 (앱은 무시)
+    await detection_handler.broadcast_mode_changed(user_id, mode)
     return ModeActivateResponse(mode_id=mode.id, is_active=mode.is_active)
 
 
